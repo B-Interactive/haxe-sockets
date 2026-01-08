@@ -1,0 +1,11 @@
+-debug
+-lib utest
+-cp src
+-cp tests
+-main hxSockets.tests.HaxeSocketTests
+
+--each
+
+--next
+-hl bin/tests/hl/test.hl
+-cmd echo "Testing HashLink..." && hl bin/tests/hl/test.hl

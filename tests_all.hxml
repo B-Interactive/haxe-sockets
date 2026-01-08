@@ -1,0 +1,35 @@
+-debug
+-lib utest
+-cp src
+-cp tests
+-main hxSockets.tests.HaxeSocketTests
+
+--each
+
+--next
+-js tests/js/test.js
+-cmd echo "Testing JavaScript..." && node tests/js/test.js
+
+--next
+-php tests/php
+-cmd echo "Testing PHP..." && php tests/php/index.php
+
+--next
+-java tests/java
+-cmd echo "Testing Java..." && java -jar tests/java/HaxeSocketTests-Debug.jar
+
+--next
+-cpp tests/cpp
+-cmd echo "Testing C++..." && tests/cpp/HaxeSocketTests-debug
+
+--next
+-neko tests/neko/test.n
+-cmd echo "Testing Neko..." && neko tests/neko/test.n
+
+--next
+-hl tests/hl/test.hl
+-cmd echo "Testing HashLink..." && hl tests/hl/test.hl
+
+--next
+-cs tests/cs/
+-cmd echo "Testing C#..." && mono tests/cs/bin/HaxeSocketTests-Debug.exe
