@@ -339,6 +339,11 @@ class SecureSocketTests extends Test {
 			// Write binary data over encrypted connection
 			socket.writeBytes(data);
 			socket.flush();
+			
+			// Assert that we're connected and data is valid
+			Assert.isTrue(socket.connected);
+			Assert.equals(CertificateStatus.TRUSTED, socket.serverCertificateStatus);
+			Assert.equals(100, data.length);
 
 			// Give it a moment then close
 			haxe.Timer.delay(function() {

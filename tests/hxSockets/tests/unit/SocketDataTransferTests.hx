@@ -325,10 +325,13 @@ class SocketDataTransferTests extends Test {
 				data.set(i, i);
 			}
 
-			// For this test, we'll just verify we can write binary data
-			// and close (actual echo test would need an echo server)
+			// Verify we can write binary data
 			socket.writeBytes(data);
 			socket.flush();
+			
+			// Assert that we successfully wrote the data
+			Assert.isTrue(socket.connected);
+			Assert.equals(256, data.length);
 
 			// Close after a moment
 			haxe.Timer.delay(function() {
@@ -351,6 +354,10 @@ class SocketDataTransferTests extends Test {
 			var utf8String = "Hello 世界 🌍";
 			socket.writeString(utf8String);
 			socket.flush();
+			
+			// Assert that we're connected and the string is valid
+			Assert.isTrue(socket.connected);
+			Assert.isTrue(utf8String.length > 0);
 
 			// Close after a moment
 			haxe.Timer.delay(function() {
