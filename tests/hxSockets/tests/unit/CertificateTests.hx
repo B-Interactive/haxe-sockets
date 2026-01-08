@@ -2,13 +2,15 @@ package hxSockets.tests.unit;
 
 import utest.Test;
 import utest.Assert;
-import hxSockets.CertificateStatus;
+import hxSockets.X509Certificate;
 
 /**
  * Tests for Certificate-related classes
  */
 class CertificateTests extends Test {
+	
 	// X500DistinguishedName Tests
+	
 	function testX500DistinguishedName_EmptyInstance() {
 		var dn = new X500DistinguishedName();
 		Assert.isNull(dn.commonName);
@@ -26,18 +28,18 @@ class CertificateTests extends Test {
 
 	function testX500DistinguishedName_ToString_WithCommonName() {
 		var dn = new X500DistinguishedName();
-		dn.setCommonName("example.com");
+		dn.commonName = "example.com";
 		Assert.equals("/CN=example.com", dn.toString());
 	}
 
 	function testX500DistinguishedName_ToString_Complete() {
 		var dn = new X500DistinguishedName();
-		dn.setCommonName("example.com");
-		dn.setCountryName("US");
-		dn.setLocalityName("San Francisco");
-		dn.setOrganizationName("Example Inc");
-		dn.setOrganizationalUnitName("IT");
-		dn.setStateOrProvinceName("California");
+		dn.commonName = "example.com";
+		dn.countryName = "US";
+		dn.localityName = "San Francisco";
+		dn.organizationName = "Example Inc";
+		dn.organizationalUnitName = "IT";
+		dn.stateOrProvinceName = "California";
 
 		var str = dn.toString();
 		Assert.isTrue(str.indexOf("CN=example.com") > -1);
@@ -50,8 +52,8 @@ class CertificateTests extends Test {
 
 	function testX500DistinguishedName_ToString_Partial() {
 		var dn = new X500DistinguishedName();
-		dn.setCommonName("test.com");
-		dn.setOrganizationName("Test Org");
+		dn.commonName = "test.com";
+		dn.organizationName = "Test Org";
 
 		var str = dn.toString();
 		Assert.isTrue(str.indexOf("CN=test.com") > -1);
@@ -81,15 +83,15 @@ class CertificateTests extends Test {
 		var cert = new X509Certificate();
 
 		var subject = new X500DistinguishedName();
-		subject.setCommonName("example.com");
-		cert._subject = subject;
+		subject.commonName = "example.com";
+		cert.subject = subject;
 
 		var issuer = new X500DistinguishedName();
-		issuer.setCommonName("CA Root");
-		cert._issuer = issuer;
+		issuer.commonName = "CA Root";
+		cert.issuer = issuer;
 
-		cert._validNotBefore = Date.now();
-		cert._validNotAfter = Date.now();
+		cert.validNotBefore = Date.now();
+		cert.validNotAfter = Date.now();
 
 		var str = cert.toString();
 		Assert.isTrue(str.indexOf("X509Certificate") > -1);

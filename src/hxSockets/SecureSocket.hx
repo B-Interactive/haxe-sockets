@@ -1,7 +1,6 @@
 package hxSockets;
 
-import hxSockets.CertificateStatus;
-import haxe.io.Bytes;
+import hxSockets.X509Certificate;
 import haxe.io.Error;
 import sys.net.Host;
 import sys.ssl.Socket as SysSecureSocket;
@@ -179,29 +178,29 @@ class SecureSocket extends Socket {
 	function _createCertificateObject(cert:Certificate):X509Certificate {
 		var x509 = new X509Certificate();
 
-		// Extract subject DN using setter methods
+		// Extract subject DN - direct assignment
 		var subject = new X500DistinguishedName();
-		subject.setCommonName(cert.subject("CN"));
-		subject.setCountryName(cert.subject("C"));
-		subject.setLocalityName(cert.subject("L"));
-		subject.setOrganizationName(cert.subject("O"));
-		subject.setOrganizationalUnitName(cert.subject("OU"));
-		subject.setStateOrProvinceName(cert.subject("S"));
-		x509._subject = subject;
+		subject.commonName = cert.subject("CN");
+		subject.countryName = cert.subject("C");
+		subject.localityName = cert.subject("L");
+		subject.organizationName = cert.subject("O");
+		subject.organizationalUnitName = cert.subject("OU");
+		subject.stateOrProvinceName = cert.subject("S");
+		x509.subject = subject;
 
-		// Extract issuer DN using setter methods
+		// Extract issuer DN - direct assignment
 		var issuer = new X500DistinguishedName();
-		issuer.setCommonName(cert.issuer("CN"));
-		issuer.setCountryName(cert.issuer("C"));
-		issuer.setLocalityName(cert.issuer("L"));
-		issuer.setOrganizationName(cert.issuer("O"));
-		issuer.setOrganizationalUnitName(cert.issuer("OU"));
-		issuer.setStateOrProvinceName(cert.issuer("S"));
-		x509._issuer = issuer;
+		issuer.commonName = cert.issuer("CN");
+		issuer.countryName = cert.issuer("C");
+		issuer.localityName = cert.issuer("L");
+		issuer.organizationName = cert.issuer("O");
+		issuer.organizationalUnitName = cert.issuer("OU");
+		issuer.stateOrProvinceName = cert.issuer("S");
+		x509.issuer = issuer;
 
-		// Extract validity dates
-		x509._validNotBefore = cert.notBefore;
-		x509._validNotAfter = cert.notAfter;
+		// Extract validity dates - direct assignment
+		x509.validNotBefore = cert.notBefore;
+		x509.validNotAfter = cert.notAfter;
 
 		return x509;
 	}

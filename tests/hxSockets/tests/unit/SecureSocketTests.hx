@@ -4,7 +4,7 @@ import utest.Test;
 import utest.Assert;
 import utest.Async;
 import hxSockets.SecureSocket;
-import hxSockets.CertificateStatus;
+import hxSockets.X509Certificate;
 import haxe.io.Bytes;
 
 /**
