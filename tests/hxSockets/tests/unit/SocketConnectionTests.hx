@@ -4,7 +4,6 @@ import utest.Test;
 import utest.Assert;
 import utest.Async;
 import hxSockets.Socket;
-import haxe.io.Bytes;
 
 /**
  * Tests for Socket network connections

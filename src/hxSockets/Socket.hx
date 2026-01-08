@@ -355,8 +355,13 @@ class Socket {
 	function get_localAddress():String {
 		if (_connected && _socket != null) {
 			try {
-				return _socket.host().host.host;
-			} catch (e:Dynamic) {}
+				var hostInfo = _socket.host();
+				if (hostInfo != null && hostInfo.host != null) {
+					return hostInfo.host.toString();
+				}
+			} catch (e:Dynamic) {
+				// Silently fail, return null
+			}
 		}
 		return null;
 	}
@@ -364,8 +369,13 @@ class Socket {
 	function get_localPort():Int {
 		if (_connected && _socket != null) {
 			try {
-				return _socket.host().port;
-			} catch (e:Dynamic) {}
+				var hostInfo = _socket.host();
+				if (hostInfo != null) {
+					return hostInfo.port;
+				}
+			} catch (e:Dynamic) {
+				// Silently fail, return 0
+			}
 		}
 		return 0;
 	}
@@ -373,8 +383,13 @@ class Socket {
 	function get_remoteAddress():String {
 		if (_connected && _socket != null) {
 			try {
-				return _socket.peer().host.host;
-			} catch (e:Dynamic) {}
+				var peerInfo = _socket.peer();
+				if (peerInfo != null && peerInfo.host != null) {
+					return peerInfo.host.toString();
+				}
+			} catch (e:Dynamic) {
+				// Silently fail, return null
+			}
 		}
 		return null;
 	}
@@ -382,8 +397,13 @@ class Socket {
 	function get_remotePort():Int {
 		if (_connected && _socket != null) {
 			try {
-				return _socket.peer().port;
-			} catch (e:Dynamic) {}
+				var peerInfo = _socket.peer();
+				if (peerInfo != null) {
+					return peerInfo.port;
+				}
+			} catch (e:Dynamic) {
+				// Silently fail, return 0
+			}
 		}
 		return 0;
 	}
