@@ -172,12 +172,15 @@ class Socket {
 	 * Read a string from the input buffer (UTF-8 encoded)
 	 */
 	public function readString(length:Int = 0):String {
+		if (_socket == null) {
+			throw "Socket not connected";
+		}
+		
 		if (length == 0) {
 			length = bytesAvailable;
-		}
-
-		if (length == 0) {
-			return "";
+			if (length == 0) {
+				return "";
+			}
 		}
 
 		var bytes = Bytes.alloc(length);
