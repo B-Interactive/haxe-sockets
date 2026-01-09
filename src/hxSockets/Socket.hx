@@ -111,7 +111,7 @@ class Socket {
 	 */
 	public function writeBytes(bytes:Bytes, offset:Int = 0, length:Int = 0):Void {
 		if (_socket == null) {
-			throw "Socket not connected";
+			trace("Socket not connected");
 		}
 
 		if (length == 0) {
@@ -133,7 +133,7 @@ class Socket {
 	 */
 	public function readBytes(bytes:Bytes, offset:Int = 0, length:Int = 0):Int {
 		if (_socket == null) {
-			throw "Socket not connected";
+			trace("Socket not connected");
 		}
 
 		var inputBytes = _inputBuffer.getBytes();
@@ -160,10 +160,17 @@ class Socket {
 	 */
 	public function readAllBytes():Bytes {
 		if (_socket == null) {
-			throw "Socket not connected";
+			trace("Socket not connected");
 		}
 
-		var result = _inputBuffer.getBytes();
+		var result:Bytes;
+
+		try {
+			result = _inputBuffer.getBytes();			
+		} catch (e:Dynamic) {
+			result = null;
+		}
+
 		_inputBuffer = new BytesBuffer();
 		return result;
 	}
@@ -173,7 +180,7 @@ class Socket {
 	 */
 	public function readString(length:Int = 0):String {
 		if (_socket == null) {
-			throw "Socket not connected";
+			trace("Socket not connected");
 		}
 		
 		if (length == 0) {
@@ -193,7 +200,7 @@ class Socket {
 	 */
 	public function flush():Void {
 		if (_socket == null) {
-			throw "Socket not connected";
+			trace("Socket not connected");
 		}
 
 		var outputBytes = _outputBuffer.getBytes();
