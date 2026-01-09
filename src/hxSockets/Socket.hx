@@ -112,6 +112,7 @@ class Socket {
 	public function writeBytes(bytes:Bytes, offset:Int = 0, length:Int = 0):Void {
 		if (_socket == null) {
 			trace("Socket not connected");
+			return;
 		}
 
 		if (length == 0) {
@@ -125,6 +126,10 @@ class Socket {
 	 * Write a string to the socket (UTF-8 encoded)
 	 */
 	public function writeString(str:String):Void {
+		if (_socket == null) {
+			trace("Socket not connected");
+			return;
+		}
 		writeBytes(Bytes.ofString(str));
 	}
 
@@ -134,6 +139,7 @@ class Socket {
 	public function readBytes(bytes:Bytes, offset:Int = 0, length:Int = 0):Int {
 		if (_socket == null) {
 			trace("Socket not connected");
+			return 0;  // Return 0 bytes read, not null
 		}
 
 		var inputBytes = _inputBuffer.getBytes();
@@ -161,16 +167,10 @@ class Socket {
 	public function readAllBytes():Bytes {
 		if (_socket == null) {
 			trace("Socket not connected");
+			return Bytes.alloc(0);  // Return empty Bytes instead of null
 		}
 
-		var result:Bytes;
-
-		try {
-			result = _inputBuffer.getBytes();			
-		} catch (e:Dynamic) {
-			result = null;
-		}
-
+		var result = _inputBuffer.getBytes();
 		_inputBuffer = new BytesBuffer();
 		return result;
 	}
@@ -181,8 +181,9 @@ class Socket {
 	public function readString(length:Int = 0):String {
 		if (_socket == null) {
 			trace("Socket not connected");
+			return "";  // Return empty string instead of null
 		}
-		
+
 		if (length == 0) {
 			length = bytesAvailable;
 			if (length == 0) {
@@ -192,6 +193,9 @@ class Socket {
 
 		var bytes = Bytes.alloc(length);
 		var read = readBytes(bytes, 0, length);
+		if (read == 0) {
+			return "";  // No bytes read, return empty string
+		}
 		return bytes.sub(0, read).toString();
 	}
 
@@ -201,6 +205,7 @@ class Socket {
 	public function flush():Void {
 		if (_socket == null) {
 			trace("Socket not connected");
+			return;
 		}
 
 		var outputBytes = _outputBuffer.getBytes();

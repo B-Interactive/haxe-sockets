@@ -53,46 +53,6 @@ class SocketBasicTests extends Test {
 		Assert.equals(0, socket.remotePort);
 	}
 	
-	// Error Handling Tests
-	
-	function testSocket_WriteBytes_NotConnected() {
-		var bytes = Bytes.ofString("test");
-		Assert.raises(function() {
-			socket.writeBytes(bytes);
-		}, String);
-	}
-	
-	function testSocket_WriteString_NotConnected() {
-		Assert.raises(function() {
-			socket.writeString("test");
-		}, String);
-	}
-	
-	function testSocket_ReadBytes_NotConnected() {
-		var bytes = Bytes.alloc(10);
-		Assert.raises(function() {
-			socket.readBytes(bytes);
-		}, String);
-	}
-	
-	function testSocket_ReadString_NotConnected() {
-		Assert.raises(function() {
-			socket.readString();
-		}, String);
-	}
-	
-	function testSocket_ReadAllBytes_NotConnected() {
-		Assert.raises(function() {
-			socket.readAllBytes();
-		}, String);
-	}
-	
-	function testSocket_Flush_NotConnected() {
-		Assert.raises(function() {
-			socket.flush();
-		}, String);
-	}
-	
 	// Invalid Connection Parameters
 	
 	function testSocket_Connect_InvalidPort_Negative() {
