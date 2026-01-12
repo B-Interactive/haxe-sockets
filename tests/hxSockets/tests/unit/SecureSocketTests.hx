@@ -1,5 +1,6 @@
 package hxSockets.tests.unit;
 
+import haxe.Exception;
 import utest.Test;
 import utest.Assert;
 import utest.Async;
@@ -366,14 +367,14 @@ class SecureSocketTests extends Test {
 		var bytes = Bytes.ofString("test");
 		Assert.raises(function() {
 			socket.writeBytes(bytes);
-		}, String);
+		}, Exception);
 	}
 
 	function testSecureSocket_ReadBytes_NotConnected() {
 		var bytes = Bytes.alloc(10);
 		Assert.raises(function() {
 			socket.readBytes(bytes);
-		}, String);
+		}, Exception);
 	}
 
 	function testSecureSocket_InvalidPort() {
