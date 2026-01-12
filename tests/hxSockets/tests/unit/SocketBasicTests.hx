@@ -1,5 +1,6 @@
 package hxSockets.tests.unit;
 
+import haxe.Exception;
 import utest.Test;
 import utest.Assert;
 import hxSockets.Socket;
@@ -51,6 +52,46 @@ class SocketBasicTests extends Test {
 		Assert.equals(0, socket.localPort);
 		Assert.isNull(socket.remoteAddress);
 		Assert.equals(0, socket.remotePort);
+	}
+
+	// Error Handling Tests
+	
+	function testSocket_WriteBytes_NotConnected() {
+		var bytes = Bytes.ofString("test");
+		Assert.raises(function() {
+			socket.writeBytes(bytes);
+		}, Exception);
+	}
+	
+	function testSocket_WriteString_NotConnected() {
+		Assert.raises(function() {
+			socket.writeString("test");
+		}, Exception);
+	}
+	
+	function testSocket_ReadBytes_NotConnected() {
+		var bytes = Bytes.alloc(10);
+		Assert.raises(function() {
+			socket.readBytes(bytes);
+		}, Exception);
+	}
+	
+	function testSocket_ReadString_NotConnected() {
+		Assert.raises(function() {
+			socket.readUTFBytes();
+		}, Exception);
+	}
+	
+	function testSocket_ReadAllBytes_NotConnected() {
+		Assert.raises(function() {
+			socket.readAllBytes();
+		}, Exception);
+	}
+	
+	function testSocket_Flush_NotConnected() {
+		Assert.raises(function() {
+			socket.flush();
+		}, Exception);
 	}
 	
 	// Invalid Connection Parameters

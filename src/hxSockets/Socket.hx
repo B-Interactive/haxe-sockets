@@ -4,6 +4,7 @@ import haxe.io.Bytes;
 import haxe.io.BytesBuffer;
 import haxe.io.Eof;
 import haxe.io.Error;
+import haxe.Exception;
 import sys.net.Host;
 import sys.net.Socket as SysSocket;
 
@@ -113,8 +114,7 @@ class Socket {
 	 */
 	public function writeBytes(bytes:Bytes, offset:Int = 0, length:Int = 0):Void {
 		if (_socket == null) {
-			trace("Socket not connected");
-			return;
+			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
 
 		if (length == 0) {
@@ -129,8 +129,7 @@ class Socket {
 	 */
 	public function writeString(str:String):Void {
 		if (_socket == null) {
-			trace("Socket not connected");
-			return;
+			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
 		writeBytes(Bytes.ofString(str));
 	}
@@ -138,21 +137,21 @@ class Socket {
 	/**
 	 * Read bytes from the input buffer
 	 */
-	public function readBytes(bytes:Bytes = null, offset:Int = 0, length:Int = 0):Int {
+	public function readBytes(bytes:Bytes, offset:UInt = 0, length:UInt = 0):Void {
 		if (_socket == null) {
-			trace("Socket not connected");
-			return 0;
-		}
-
-		if (_receivedBytes.length == 0) {
-			trace("No bytes available");
-			return 0;
+			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
 
 		// Calculate actual length to read
 		var availableLength = _receivedBytes.length;
-		if (offset >= availableLength || offset < 0) {
-			return 0; // Offset is beyond available data or invalid
+
+		if (availableLength == 0) {
+			throw new Exception("There is insufficient data available to read.");
+		}
+
+		// Check if offset is valid
+		if (offset < 0 || offset >= availableLength) {
+			throw new Exception("Offset out of bounds");
 		}
 
 		var actualLength:Int = length;
@@ -162,45 +161,22 @@ class Socket {
 			actualLength = Std.int(Math.min(length, availableLength - offset));
 		}
 
-		if (actualLength <= 0) {
-			return 0;
-		}
-
-		if (bytes != null) {
-			// Copy data to provided buffer
-			try {
-				bytes.blit(offset, _receivedBytes, offset, actualLength);
-			} catch (e:Dynamic) {
-				trace("Error blitting bytes: " + e);
-				return 0;
-			}
-		} else {
-			// Create new bytes if not provided
-			bytes = Bytes.alloc(actualLength);
-			try {
-				bytes.blit(0, _receivedBytes, offset, actualLength);
-			} catch (e:Dynamic) {
-				trace("Error blitting to new bytes: " + e);
-				return 0;
-			}
+		// Copy data to provided buffer
+		try {
+			bytes.blit(offset, _receivedBytes, offset, actualLength);
+		} catch (e:Dynamic) {
+			throw new Exception("Error writing bytes: " + e);
 		}
 
 		// Update _receivedBytes to remove the read portion
 		var remainingBytes = availableLength - (offset + actualLength);
 		if (remainingBytes > 0) {
 			var newReceivedBytes:Bytes = Bytes.alloc(remainingBytes);
-			try {
-				newReceivedBytes.blit(0, _receivedBytes, offset + actualLength, remainingBytes);
-				_receivedBytes = newReceivedBytes;
-			} catch (e:Dynamic) {
-				trace("Error updating received bytes: " + e);
-				_receivedBytes = Bytes.alloc(0);
-			}
+			newReceivedBytes.blit(0, _receivedBytes, offset + actualLength, remainingBytes);
+			_receivedBytes = newReceivedBytes;
 		} else {
 			_receivedBytes = Bytes.alloc(0);
 		}
-
-		return actualLength; // Return the number of bytes actually read
 	}
 
 	/**
@@ -208,12 +184,11 @@ class Socket {
 	 */
 	public function readAllBytes():Bytes {
 		if (_socket == null) {
-			trace("Socket not connected");
-			return Bytes.alloc(0);
+			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
 
 		if (_receivedBytes.length == 0) {
-			return Bytes.alloc(0);
+			throw new Exception("There is insufficient data available to read.");
 		}
 
 		var result = Bytes.alloc(_receivedBytes.length);
@@ -226,30 +201,34 @@ class Socket {
 	/**
 	 * Read a string from the input buffer (UTF-8 encoded)
 	 */
-	public function readString(length:Int = 0):String {
+	public function readUTFBytes(length:UInt = 0):String {
 		if (_socket == null) {
-			trace("Socket not connected");
-			return "";
+			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
+		}
+
+		var bytesAvail = _receivedBytes.length;
+
+		if (bytesAvail == 0 ) {
+			throw new Exception("There is insufficient data available to read.");
 		}
 
 		if (length == 0) {
-			length = bytesAvailable;
-			if (length == 0) {
-				return "";
-			}
+			length = bytesAvail;			
 		}
 
-		var actualLength:Int = Std.int(Math.min(length, bytesAvailable));
-		if (actualLength == 0) {
-			return "";
-		}
+		// Ensures that if length is greater than the available bytes, it reverts to bytes available.
+		var actualLength:Int = Std.int(Math.min(length, bytesAvail));
 
 		var bytes = Bytes.alloc(actualLength);
-		var read:Int = readBytes(bytes, 0, actualLength);
-		if (read == 0) {
+		
+		try {
+			readBytes(bytes, 0, actualLength);
+		} catch (e:Exception) {
+			trace("Error performing readUTFBytes() : " + e);
 			return "";
-		}
-		return bytes.sub(0, read).toString();
+		}		
+
+		return bytes.sub(0, bytes.length).toString();
 	}
 
 	/**
@@ -257,8 +236,7 @@ class Socket {
 	 */
 	public function flush():Void {
 		if (_socket == null) {
-			trace("Socket not connected");
-			return;
+			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
 
 		var outputBytes = _outputBuffer.getBytes();

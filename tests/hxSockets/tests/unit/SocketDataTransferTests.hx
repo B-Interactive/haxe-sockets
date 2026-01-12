@@ -1,5 +1,6 @@
 package hxSockets.tests.unit;
 
+import haxe.Exception;
 import utest.Test;
 import utest.Assert;
 import utest.Async;
@@ -42,7 +43,7 @@ class SocketDataTransferTests extends Test {
 		socket.onData = function(bytes) {
 			Assert.isTrue(socket.bytesAvailable > 0);
 
-			var response = socket.readString();
+			var response = socket.readUTFBytes();
 			Assert.isTrue(response.length > 0);
 			Assert.isTrue(response.indexOf("HTTP/") > -1);
 
@@ -91,7 +92,7 @@ class SocketDataTransferTests extends Test {
 
 		socket.onData = function(bytes) {
 			Assert.isTrue(socket.bytesAvailable > 0);
-			var response = socket.readString();
+			var response = socket.readUTFBytes();
 			Assert.isTrue(response.indexOf("HTTP/") > -1);
 			socket.close();
 			async.done();
@@ -143,7 +144,7 @@ class SocketDataTransferTests extends Test {
 				var available = socket.bytesAvailable;
 				if (available > 10) {
 					// Read only first 10 bytes
-					var partial = socket.readString(10);
+					var partial = socket.readUTFBytes(10);
 					Assert.equals(10, partial.length);
 
 					// Should still have data available
@@ -209,9 +210,9 @@ class SocketDataTransferTests extends Test {
 
 				if (socket.bytesAvailable >= 20) {
 					var buffer = Bytes.alloc(20);
-					var read = socket.readBytes(buffer, 0, 20);
+					socket.readBytes(buffer, 0, 20);
 
-					Assert.equals(20, read);
+					Assert.equals(20, buffer.length);
 					Assert.notNull(buffer);
 
 					socket.close();
@@ -243,7 +244,7 @@ class SocketDataTransferTests extends Test {
 
 		socket.onData = function(bytes) {
 			Assert.isTrue(socket.bytesAvailable > 0);
-			var response = socket.readString();
+			var response = socket.readUTFBytes();
 			Assert.isTrue(response.indexOf("HTTP/") > -1);
 			socket.close();
 			async.done();
@@ -274,10 +275,10 @@ class SocketDataTransferTests extends Test {
 
 				// Read some data
 				if (initial >= 10) {
-					socket.readString(5);
+					socket.readUTFBytes(5);
 					Assert.equals(initial - 5, socket.bytesAvailable);
 
-					socket.readString(5);
+					socket.readUTFBytes(5);
 					Assert.equals(initial - 10, socket.bytesAvailable);
 				}
 
@@ -298,11 +299,13 @@ class SocketDataTransferTests extends Test {
 	function testSocket_EmptyRead(async:Async) {
 		socket.onConnect = function() {
 			// Don't send anything, just check empty buffer
-			var str = socket.readString(0);
-			Assert.equals("", str);
+			Assert.raises(function() {
+				socket.readUTFBytes();
+			}, Exception);
 
-			var all = socket.readAllBytes();
-			Assert.equals(0, all.length);
+			Assert.raises(function() {
+				socket.readAllBytes();
+			}, Exception);
 
 			socket.close();
 			async.done();
@@ -328,7 +331,7 @@ class SocketDataTransferTests extends Test {
 			// Verify we can write binary data
 			socket.writeBytes(data);
 			socket.flush();
-			
+
 			// Assert that we successfully wrote the data
 			Assert.isTrue(socket.connected);
 			Assert.equals(256, data.length);
@@ -354,7 +357,7 @@ class SocketDataTransferTests extends Test {
 			var utf8String = "Hello 世界 🌍";
 			socket.writeString(utf8String);
 			socket.flush();
-			
+
 			// Assert that we're connected and the string is valid
 			Assert.isTrue(socket.connected);
 			Assert.isTrue(utf8String.length > 0);

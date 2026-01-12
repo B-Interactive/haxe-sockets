@@ -158,7 +158,7 @@ class SecureSocketTests extends Test {
 		socket.onData = function(bytes) {
 			Assert.isTrue(socket.bytesAvailable > 0);
 
-			var response = socket.readString();
+			var response = socket.readUTFBytes();
 			Assert.isTrue(response.length > 0);
 			Assert.isTrue(response.indexOf("HTTP/") > -1);
 
