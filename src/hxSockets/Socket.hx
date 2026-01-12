@@ -36,6 +36,7 @@ class Socket {
 	var _host:String;
 	var _port:Int;
 	var _inputBuffer:BytesBuffer;
+	var _receivedBytes:Bytes;
 	var _outputBuffer:BytesBuffer;
 	var _readBuffer:Bytes;
 	var _timestamp:Float;
@@ -43,6 +44,7 @@ class Socket {
 
 	public function new() {
 		_inputBuffer = new BytesBuffer();
+		_receivedBytes = Bytes.alloc(0);
 		_outputBuffer = new BytesBuffer();
 		_readBuffer = Bytes.alloc(4096);
 	}
@@ -136,29 +138,69 @@ class Socket {
 	/**
 	 * Read bytes from the input buffer
 	 */
-	public function readBytes(bytes:Bytes, offset:Int = 0, length:Int = 0):Int {
+	public function readBytes(bytes:Bytes = null, offset:Int = 0, length:Int = 0):Int {
 		if (_socket == null) {
 			trace("Socket not connected");
-			return 0;  // Return 0 bytes read, not null
+			return 0;
 		}
 
-		var inputBytes = _inputBuffer.getBytes();
-		var available = inputBytes.length;
-
-		if (length == 0 || length > available) {
-			length = available;
+		if (_receivedBytes.length == 0) {
+			trace("No bytes available");
+			return 0;
 		}
 
-		if (length > 0) {
-			bytes.blit(offset, inputBytes, 0, length);
-			// Remove read bytes from buffer
-			_inputBuffer = new BytesBuffer();
-			if (length < available) {
-				_inputBuffer.addBytes(inputBytes, length, available - length);
+		// Calculate actual length to read
+		var availableLength = _receivedBytes.length;
+		if (offset >= availableLength || offset < 0) {
+			return 0; // Offset is beyond available data or invalid
+		}
+
+		var actualLength:Int = length;
+		if (length == 0) {
+			actualLength = availableLength - offset;
+		} else {
+			actualLength = Std.int(Math.min(length, availableLength - offset));
+		}
+
+		if (actualLength <= 0) {
+			return 0;
+		}
+
+		if (bytes != null) {
+			// Copy data to provided buffer
+			try {
+				bytes.blit(offset, _receivedBytes, offset, actualLength);
+			} catch (e:Dynamic) {
+				trace("Error blitting bytes: " + e);
+				return 0;
+			}
+		} else {
+			// Create new bytes if not provided
+			bytes = Bytes.alloc(actualLength);
+			try {
+				bytes.blit(0, _receivedBytes, offset, actualLength);
+			} catch (e:Dynamic) {
+				trace("Error blitting to new bytes: " + e);
+				return 0;
 			}
 		}
 
-		return length;
+		// Update _receivedBytes to remove the read portion
+		var remainingBytes = availableLength - (offset + actualLength);
+		if (remainingBytes > 0) {
+			var newReceivedBytes:Bytes = Bytes.alloc(remainingBytes);
+			try {
+				newReceivedBytes.blit(0, _receivedBytes, offset + actualLength, remainingBytes);
+				_receivedBytes = newReceivedBytes;
+			} catch (e:Dynamic) {
+				trace("Error updating received bytes: " + e);
+				_receivedBytes = Bytes.alloc(0);
+			}
+		} else {
+			_receivedBytes = Bytes.alloc(0);
+		}
+
+		return actualLength; // Return the number of bytes actually read
 	}
 
 	/**
@@ -167,11 +209,17 @@ class Socket {
 	public function readAllBytes():Bytes {
 		if (_socket == null) {
 			trace("Socket not connected");
-			return Bytes.alloc(0);  // Return empty Bytes instead of null
+			return Bytes.alloc(0);
 		}
 
-		var result = _inputBuffer.getBytes();
-		_inputBuffer = new BytesBuffer();
+		if (_receivedBytes.length == 0) {
+			return Bytes.alloc(0);
+		}
+
+		var result = Bytes.alloc(_receivedBytes.length);
+		result.blit(0, _receivedBytes, 0, _receivedBytes.length);
+		_receivedBytes = Bytes.alloc(0);
+
 		return result;
 	}
 
@@ -181,7 +229,7 @@ class Socket {
 	public function readString(length:Int = 0):String {
 		if (_socket == null) {
 			trace("Socket not connected");
-			return "";  // Return empty string instead of null
+			return "";
 		}
 
 		if (length == 0) {
@@ -191,10 +239,15 @@ class Socket {
 			}
 		}
 
-		var bytes = Bytes.alloc(length);
-		var read = readBytes(bytes, 0, length);
+		var actualLength:Int = Std.int(Math.min(length, bytesAvailable));
+		if (actualLength == 0) {
+			return "";
+		}
+
+		var bytes = Bytes.alloc(actualLength);
+		var read:Int = readBytes(bytes, 0, actualLength);
 		if (read == 0) {
-			return "";  // No bytes read, return empty string
+			return "";
 		}
 		return bytes.sub(0, read).toString();
 	}
@@ -316,7 +369,27 @@ class Socket {
 				} while (len == _readBuffer.length);
 
 				if (hasData && onData != null) {
-					onData(_inputBuffer.getBytes());
+					var inputBytes = _inputBuffer.getBytes();
+
+					// Create a new Bytes object large enough for old + new data
+					var newReceivedBytes = Bytes.alloc(_receivedBytes.length + inputBytes.length);
+
+					// Copy existing data
+					if (_receivedBytes.length > 0) {
+						newReceivedBytes.blit(0, _receivedBytes, 0, _receivedBytes.length);
+					}
+
+					// Append new data
+					newReceivedBytes.blit(_receivedBytes.length, inputBytes, 0, inputBytes.length);
+
+					// Replace the old buffer
+					_receivedBytes = newReceivedBytes;
+
+					// Reset input buffer after transferring data
+					_inputBuffer = new BytesBuffer();
+
+					// Call onData callback with the new bytes
+					onData(inputBytes);
 				}
 			} catch (e:Eof) {
 				close();
@@ -356,7 +429,7 @@ class Socket {
 
 	// Getters
 	function get_bytesAvailable():Int {
-		return _inputBuffer.getBytes().length;
+		return _receivedBytes.length;
 	}
 
 	function get_connected():Bool {

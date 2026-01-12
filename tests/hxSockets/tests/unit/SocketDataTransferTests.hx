@@ -51,7 +51,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -73,7 +73,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -98,7 +98,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -121,7 +121,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -157,7 +157,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -188,7 +188,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -221,7 +221,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -250,7 +250,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -287,7 +287,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -309,7 +309,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -341,7 +341,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
@@ -367,7 +367,7 @@ class SocketDataTransferTests extends Test {
 		};
 
 		socket.onError = function(msg) {
-			Assert.fail('Error: $msg');
+			Assert.fail(msg);
 			async.done();
 		};
 
