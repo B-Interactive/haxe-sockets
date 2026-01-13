@@ -61,7 +61,7 @@ class SecureSocket extends Socket {
 
 		try {
 			_socket = new sys.ssl.Socket();
-			secureSocket = getSecureSocket(); // Use helper method
+			secureSocket = getSecureSocket();
 			secureSocket.setBlocking(false);
 			secureSocket.setHostname(host);
 			secureSocket.verifyCert = false;
