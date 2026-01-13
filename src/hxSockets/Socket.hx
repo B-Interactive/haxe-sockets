@@ -32,8 +32,14 @@ class Socket {
 	#end
 
 	// Private fields
-	var _socket:SysSocket;
+	var _socket:sys.net.Socket;
 	var _connected:Bool = false;
+
+	// Protected helper method for secure socket access
+	private function getSecureSocket():sys.ssl.Socket {
+		return cast _socket;
+	}
+
 	var _host:String;
 	var _port:Int;
 	var _inputBuffer:BytesBuffer;
@@ -208,25 +214,25 @@ class Socket {
 
 		var bytesAvail = _receivedBytes.length;
 
-		if (bytesAvail == 0 ) {
+		if (bytesAvail == 0) {
 			throw new Exception("There is insufficient data available to read.");
 		}
 
 		if (length == 0) {
-			length = bytesAvail;			
+			length = bytesAvail;
 		}
 
 		// Ensures that if length is greater than the available bytes, it reverts to bytes available.
 		var actualLength:Int = Std.int(Math.min(length, bytesAvail));
 
 		var bytes = Bytes.alloc(actualLength);
-		
+
 		try {
 			readBytes(bytes, 0, actualLength);
 		} catch (e:Exception) {
 			trace("Error performing readUTFBytes() : " + e);
 			return "";
-		}		
+		}
 
 		return bytes.sub(0, bytes.length).toString();
 	}

@@ -3,7 +3,6 @@ package hxSockets;
 import hxSockets.X509Certificate;
 import haxe.io.Error;
 import sys.net.Host;
-import sys.ssl.Socket as SysSecureSocket;
 import sys.ssl.Certificate;
 
 /**
@@ -20,6 +19,8 @@ class SecureSocket extends Socket {
 	var _certificateStatus:CertificateStatus = UNKNOWN;
 	var _peerCert:Certificate;
 	var _handshakeComplete:Bool = false;
+
+	var secureSocket:sys.ssl.Socket;
 
 	public function new() {
 		super();
@@ -59,10 +60,13 @@ class SecureSocket extends Socket {
 		_serverCertificate = null;
 
 		try {
-			_socket = new SysSecureSocket();
-			_socket.setBlocking(false);
-			_socket.connect(h, port);
-			_socket.setFastSend(true);
+			_socket = new sys.ssl.Socket();
+			secureSocket = getSecureSocket(); // Use helper method
+			secureSocket.setBlocking(false);
+			secureSocket.setHostname(host);
+			secureSocket.verifyCert = false;
+			secureSocket.connect(h, port);
+			secureSocket.setFastSend(true);
 		} catch (e:Dynamic) {
 			if (onError != null) {
 				onError("Connection failed: " + e);
@@ -107,12 +111,10 @@ class SecureSocket extends Socket {
 
 		// Handle TLS handshake
 		if (doConnect && !_handshakeComplete) {
-			var secureSocket:SysSecureSocket = cast _socket;
 			var blocked = false;
 
 			try {
 				secureSocket.handshake();
-				blocked = false;
 			} catch (e:Error) {
 				switch (e) {
 					case Error.Blocked | Error.Custom(Error.Blocked):
@@ -138,6 +140,8 @@ class SecureSocket extends Socket {
 				// Try again next frame
 				return;
 			}
+
+			_socket.setBlocking(false);
 
 			// Handshake complete, validate certificate
 			try {
