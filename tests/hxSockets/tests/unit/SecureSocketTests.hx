@@ -208,6 +208,7 @@ class SecureSocketTests extends Test {
 	function testSecureSocket_MultipleConnections(async:Async) {
 		var hosts = ["example.com", "www.github.com", "www.wikipedia.org"];
 		var currentIndex = 0;
+		var completedCount = 0;
 
 		function connectNext() {
 			if (currentIndex >= hosts.length) {
@@ -231,8 +232,15 @@ class SecureSocketTests extends Test {
 			};
 
 			s.onError = function(msg) {
-				// Some hosts might fail, continue to next
-				haxe.Timer.delay(connectNext, 100);
+				// Some hosts might fail, continue to next - but we need to track completion
+				haxe.Timer.delay(function() {
+					completedCount++;
+					if (completedCount >= hosts.length) {
+						async.done();
+					} else {
+						connectNext();
+					}
+				}, 100);
 			};
 
 			s.connect(host, 443);

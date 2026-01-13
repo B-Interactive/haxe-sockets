@@ -68,6 +68,7 @@ class SecureSocket extends Socket {
 			secureSocket.connect(h, port);
 			secureSocket.setFastSend(true);
 		} catch (e:Dynamic) {
+			_certificateStatus = INVALID;
 			if (onError != null) {
 				onError("Connection failed: " + e);
 			}
@@ -102,10 +103,10 @@ class SecureSocket extends Socket {
 		// Handle connection failure
 		if (doClose && !_connected) {
 			_certificateStatus = INVALID;
-			close();
 			if (onError != null) {
 				onError("Connection timeout");
 			}
+			close();
 			return;
 		}
 
