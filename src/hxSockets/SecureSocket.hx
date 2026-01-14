@@ -10,8 +10,6 @@ import sys.ssl.Certificate;
  * Extends Socket with encryption and certificate validation
  */
 class SecureSocket extends Socket {
-	public static var isSupported(get, never):Bool;
-
 	public var serverCertificate(get, never):X509Certificate;
 	public var serverCertificateStatus(get, never):CertificateStatus;
 
@@ -19,6 +17,7 @@ class SecureSocket extends Socket {
 	var _certificateStatus:CertificateStatus = UNKNOWN;
 	var _peerCert:Certificate;
 	var _handshakeComplete:Bool = false;
+	var _handshakeStarted:Bool = false;
 
 	var secureSocket:sys.ssl.Socket;
 
@@ -56,6 +55,7 @@ class SecureSocket extends Socket {
 		_timestamp = Sys.time();
 		_certificateStatus = UNKNOWN;
 		_handshakeComplete = false;
+		_handshakeStarted = false;
 		_peerCert = null;
 		_serverCertificate = null;
 
@@ -64,7 +64,7 @@ class SecureSocket extends Socket {
 			secureSocket = getSecureSocket();
 			secureSocket.setBlocking(false);
 			secureSocket.setHostname(host);
-			secureSocket.verifyCert = false;
+			secureSocket.verifyCert = true;
 			secureSocket.connect(h, port);
 			secureSocket.setFastSend(true);
 		} catch (e:Dynamic) {
@@ -80,6 +80,12 @@ class SecureSocket extends Socket {
 
 	override function _poll():Void {
 		if (_socket == null) {
+			return;
+		}
+
+		// If already connected and handshake complete, just do normal polling
+		if (_connected && _handshakeComplete) {
+			super._poll();
 			return;
 		}
 
@@ -111,15 +117,20 @@ class SecureSocket extends Socket {
 		}
 
 		// Handle TLS handshake
-		if (doConnect && !_handshakeComplete) {
-			var blocked = false;
+		if (doConnect || _handshakeStarted) {
+			if (!_handshakeStarted) {
+				_handshakeStarted = true;
+			}
+
+			var handshakeBlocked = false;
 
 			try {
 				secureSocket.handshake();
+				// If we get here without exception, handshake succeeded
 			} catch (e:Error) {
 				switch (e) {
 					case Error.Blocked | Error.Custom(Error.Blocked):
-						blocked = true;
+						handshakeBlocked = true;
 					default:
 						_certificateStatus = INVALID;
 						close();
@@ -137,12 +148,10 @@ class SecureSocket extends Socket {
 				return;
 			}
 
-			if (blocked) {
-				// Try again next frame
+			if (handshakeBlocked) {
+				// Handshake still in progress, try again next frame
 				return;
 			}
-
-			_socket.setBlocking(false);
 
 			// Handshake complete, validate certificate
 			try {
@@ -172,11 +181,6 @@ class SecureSocket extends Socket {
 				}
 				return;
 			}
-		}
-
-		// Continue with normal socket operations
-		if (_connected && _handshakeComplete) {
-			super._poll();
 		}
 	}
 
@@ -211,10 +215,6 @@ class SecureSocket extends Socket {
 	}
 
 	// Getters
-	static function get_isSupported():Bool {
-		return true;
-	}
-
 	function get_serverCertificate():X509Certificate {
 		return _serverCertificate;
 	}
