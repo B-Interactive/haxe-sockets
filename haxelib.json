@@ -1,0 +1,12 @@
+{
+  "name" : "haxe-sockets",
+  "description" : "A lightweight, cross-platform socket library for Haxe that mimics the AIR / OpenFL Socket and SecureSocket API's, distilled down to native Haxe with no dependencies",
+  "version" : "0.0.1",
+  "releasenote": "Initial release",
+  "url" : "https://github.com/B-Interactive/haxe-sockets",
+  "classPath" : "src",
+  "license" : "Public",
+  "tags" : ["socket","securesocket","tcp","openfl","air","flash","net","networking"],
+  "contributors": ["Bink"],
+  "dependencies": { }
+}
