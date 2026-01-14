@@ -5,7 +5,7 @@
   "releasenote": "Initial release",
   "url" : "https://github.com/B-Interactive/haxe-sockets",
   "classPath" : "src",
-  "license" : "Public",
+  "license" : "MIT",
   "tags" : ["socket","securesocket","tcp","openfl","air","flash","net","networking"],
   "contributors": ["Bink"],
   "dependencies": { }
