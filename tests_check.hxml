@@ -1,0 +1,13 @@
+# Type-check the whole library + test suite for the C++ target WITHOUT emitting
+# any output (no C++ compiler required). Useful for fast CI / DCE-shape checks.
+#
+#   haxe tests_check.hxml
+#
+-debug
+-lib utest
+-lib hxcpp
+-cp src
+-cp tests
+-main hxSockets.tests.HaxeSocketTests
+-cpp tests/cpp
+--no-output

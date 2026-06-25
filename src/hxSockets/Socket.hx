@@ -9,8 +9,7 @@ import sys.net.Host;
 import sys.net.Socket as SysSocket;
 
 /**
- * Event-driven TCP socket implementation for Haxe
- * Mimics AIR SDK Socket API while using native Haxe types
+ * Event-driven TCP socket. Mimics the AIR SDK Socket API using native Haxe types.
  */
 class Socket {
 	// Events
@@ -18,6 +17,12 @@ class Socket {
 	public var onClose:Void->Void;
 	public var onData:Bytes->Void;
 	public var onError:String->Void;
+
+	/**
+	 * Optional typed-error callback, invoked alongside onError with a
+	 * SocketErrorKind so callers can react without parsing the message.
+	 */
+	public var onErrorKind:SocketErrorKind->String->Void;
 
 	// Properties
 	public var bytesAvailable(get, never):Int;
@@ -42,18 +47,49 @@ class Socket {
 
 	var _host:String;
 	var _port:Int;
-	var _inputBuffer:BytesBuffer;
-	var _receivedBytes:Bytes;
+	var _receiveBuffer:ReceiveBuffer;
 	var _outputBuffer:BytesBuffer;
 	var _readBuffer:Bytes;
 	var _timestamp:Float;
 	var _pollTimer:haxe.Timer;
+	var _manualPoll:Bool;
 
-	public function new() {
-		_inputBuffer = new BytesBuffer();
-		_receivedBytes = Bytes.alloc(0);
+	/**
+	 * Create a socket. When manualPoll is false (default) the socket polls I/O
+	 * from an internal haxe.Timer. When true, the Timer is not used and the
+	 * owner must drive I/O by calling poll().
+	 */
+	public function new(manualPoll:Bool = false) {
+		_manualPoll = manualPoll;
+		_receiveBuffer = new ReceiveBuffer(4096);
 		_outputBuffer = new BytesBuffer();
 		_readBuffer = Bytes.alloc(4096);
+	}
+
+	/**
+	 * Enable or disable manual-poll mode. Starts or stops the internal Timer
+	 * to match when connected.
+	 */
+	public function setManualPoll(value:Bool):Void {
+		if (_manualPoll == value) {
+			return;
+		}
+		_manualPoll = value;
+		if (_socket != null) {
+			if (_manualPoll) {
+				_stopPolling();
+			} else {
+				_startPolling();
+			}
+		}
+	}
+
+	/**
+	 * Drive one I/O tick: advance connect state, read data, flush output.
+	 * Used in manual-poll mode. Safe to call when not connected.
+	 */
+	public function poll():Void {
+		_poll();
 	}
 
 	/**
@@ -65,9 +101,7 @@ class Socket {
 		}
 
 		if (port < 0 || port > 65535) {
-			if (onError != null) {
-				onError("Invalid port number: " + port);
-			}
+			_emitError(Other, "Invalid port number: " + port);
 			return;
 		}
 
@@ -75,15 +109,14 @@ class Socket {
 		try {
 			h = new Host(host);
 		} catch (e:Dynamic) {
-			if (onError != null) {
-				onError("Invalid host: " + host);
-			}
+			_emitError(Other, "Invalid host: " + host);
 			return;
 		}
 
 		_host = host;
 		_port = port;
 		_timestamp = Sys.time();
+		_receiveBuffer.clear();
 
 		try {
 			_socket = new SysSocket();
@@ -91,28 +124,31 @@ class Socket {
 			_socket.connect(h, port);
 			_socket.setFastSend(true);
 		} catch (e:Dynamic) {
-			if (onError != null) {
-				onError("Connection failed: " + e);
-			}
+			_emitError(Other, "Connection failed: " + e);
 			return;
 		}
 
-		// Start polling
+		// Start polling (a no-op in manual-poll mode)
 		_startPolling();
 	}
 
 	/**
-	 * Close the socket connection
+	 * Close the socket. Idempotent; resets buffers so the instance can be
+	 * re-connect()ed.
 	 */
 	public function close():Void {
+		_stopPolling();
 		if (_socket != null) {
-			_stopPolling();
 			try {
 				_socket.close();
 			} catch (e:Dynamic) {}
 			_socket = null;
-			_connected = false;
 		}
+		_connected = false;
+		if (_receiveBuffer != null) {
+			_receiveBuffer.clear();
+		}
+		_outputBuffer = new BytesBuffer();
 	}
 
 	/**
@@ -141,48 +177,81 @@ class Socket {
 	}
 
 	/**
-	 * Read bytes from the input buffer
+	 * Read length bytes from the input buffer into dest. If length is 0, reads
+	 * all available bytes. Throws when no data is available.
 	 */
 	public function readBytes(bytes:Bytes, offset:UInt = 0, length:UInt = 0):Void {
 		if (_socket == null) {
 			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
 
-		// Calculate actual length to read
-		var availableLength = _receivedBytes.length;
+		var availableLength = _receiveBuffer.available;
 
 		if (availableLength == 0) {
 			throw new Exception("There is insufficient data available to read.");
 		}
 
-		// Check if offset is valid
-		if (offset < 0 || offset >= availableLength) {
+		if (offset < 0) {
 			throw new Exception("Offset out of bounds");
 		}
 
 		var actualLength:Int = length;
 		if (length == 0) {
-			actualLength = availableLength - offset;
+			actualLength = availableLength;
 		} else {
-			actualLength = Std.int(Math.min(length, availableLength - offset));
+			actualLength = Std.int(Math.min(length, availableLength));
 		}
 
-		// Copy data to provided buffer
 		try {
-			bytes.blit(offset, _receivedBytes, offset, actualLength);
+			_receiveBuffer.read(bytes, offset, actualLength);
 		} catch (e:Dynamic) {
 			throw new Exception("Error writing bytes: " + e);
 		}
+	}
 
-		// Update _receivedBytes to remove the read portion
-		var remainingBytes = availableLength - (offset + actualLength);
-		if (remainingBytes > 0) {
-			var newReceivedBytes:Bytes = Bytes.alloc(remainingBytes);
-			newReceivedBytes.blit(0, _receivedBytes, offset + actualLength, remainingBytes);
-			_receivedBytes = newReceivedBytes;
-		} else {
-			_receivedBytes = Bytes.alloc(0);
+	/**
+	 * Read and consume exactly length bytes, or return null (leaving the buffer
+	 * untouched) when fewer than length bytes are buffered.
+	 */
+	public function readExactly(length:Int):Bytes {
+		if (_socket == null) {
+			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
+		if (length <= 0) {
+			return Bytes.alloc(0);
+		}
+		if (_receiveBuffer.available < length) {
+			return null;
+		}
+		var out = Bytes.alloc(length);
+		_receiveBuffer.read(out, 0, length);
+		return out;
+	}
+
+	/**
+	 * Return true when at least length bytes are buffered for reading.
+	 */
+	public function hasAvailable(length:Int):Bool {
+		return _receiveBuffer.available >= length;
+	}
+
+	/**
+	 * Copy the next length bytes without consuming them, or return null when
+	 * fewer than length bytes are buffered.
+	 */
+	public function peekBytes(length:Int):Bytes {
+		if (_socket == null) {
+			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
+		}
+		if (length <= 0) {
+			return Bytes.alloc(0);
+		}
+		if (_receiveBuffer.available < length) {
+			return null;
+		}
+		var out = Bytes.alloc(length);
+		_receiveBuffer.peek(out, 0, length);
+		return out;
 	}
 
 	/**
@@ -193,14 +262,13 @@ class Socket {
 			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
 
-		if (_receivedBytes.length == 0) {
+		var availableLength = _receiveBuffer.available;
+		if (availableLength == 0) {
 			throw new Exception("There is insufficient data available to read.");
 		}
 
-		var result = Bytes.alloc(_receivedBytes.length);
-		result.blit(0, _receivedBytes, 0, _receivedBytes.length);
-		_receivedBytes = Bytes.alloc(0);
-
+		var result = Bytes.alloc(availableLength);
+		_receiveBuffer.read(result, 0, availableLength);
 		return result;
 	}
 
@@ -212,7 +280,7 @@ class Socket {
 			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
 
-		var bytesAvail = _receivedBytes.length;
+		var bytesAvail = _receiveBuffer.available;
 
 		if (bytesAvail == 0) {
 			throw new Exception("There is insufficient data available to read.");
@@ -255,9 +323,7 @@ class Socket {
 					case Error.Blocked | Error.Custom(Error.Blocked):
 						// Buffer is full, try again later
 					default:
-						if (onError != null) {
-							onError("Write error: " + e);
-						}
+						_emitError(ConnectionLost, "Write error: " + e);
 				}
 			}
 		}
@@ -266,6 +332,10 @@ class Socket {
 	// Polling logic
 	function _startPolling():Void {
 		_stopPolling();
+		if (_manualPoll) {
+			// Owner drives I/O via poll(); do not start the internal Timer.
+			return;
+		}
 		_pollTimer = new haxe.Timer(16); // ~60fps
 		_pollTimer.run = _poll;
 	}
@@ -302,9 +372,7 @@ class Socket {
 		// Process connection
 		if (doClose && !_connected) {
 			close();
-			if (onError != null) {
-				onError("Connection timeout");
-			}
+			_emitError(Timeout, "Connection timeout");
 			return;
 		}
 
@@ -315,9 +383,7 @@ class Socket {
 					// Not connected yet, check timeout
 					if (Sys.time() - _timestamp > timeout / 1000) {
 						close();
-						if (onError != null) {
-							onError("Connection timeout");
-						}
+						_emitError(Timeout, "Connection timeout");
 					}
 					return;
 				}
@@ -325,9 +391,7 @@ class Socket {
 				// Not connected yet, check timeout
 				if (Sys.time() - _timestamp > timeout / 1000) {
 					close();
-					if (onError != null) {
-						onError("Connection timeout");
-					}
+					_emitError(Timeout, "Connection timeout");
 				}
 				return;
 			}
@@ -341,44 +405,34 @@ class Socket {
 		// Read available data
 		if (_connected) {
 			try {
-				var hasData = false;
 				var len:Int;
+				// Only allocate a chunk buffer when an onData listener is set.
+				var chunk:BytesBuffer = null;
 
 				do {
 					len = _socket.input.readBytes(_readBuffer, 0, _readBuffer.length);
 					if (len > 0) {
-						_inputBuffer.addBytes(_readBuffer, 0, len);
-						hasData = true;
+						_receiveBuffer.write(_readBuffer, 0, len);
+						if (onData != null) {
+							if (chunk == null) {
+								chunk = new BytesBuffer();
+							}
+							chunk.addBytes(_readBuffer, 0, len);
+						}
 					}
 				} while (len == _readBuffer.length);
 
-				if (hasData && onData != null) {
-					var inputBytes = _inputBuffer.getBytes();
-
-					// Create a new Bytes object large enough for old + new data
-					var newReceivedBytes = Bytes.alloc(_receivedBytes.length + inputBytes.length);
-
-					// Copy existing data
-					if (_receivedBytes.length > 0) {
-						newReceivedBytes.blit(0, _receivedBytes, 0, _receivedBytes.length);
-					}
-
-					// Append new data
-					newReceivedBytes.blit(_receivedBytes.length, inputBytes, 0, inputBytes.length);
-
-					// Replace the old buffer
-					_receivedBytes = newReceivedBytes;
-
-					// Reset input buffer after transferring data
-					_inputBuffer = new BytesBuffer();
-
-					// Call onData callback with the new bytes
-					onData(inputBytes);
+				if (chunk != null && onData != null) {
+					// Pass the freshly received bytes; they also stay in the buffer.
+					onData(chunk.getBytes());
 				}
 			} catch (e:Eof) {
 				close();
 				if (onClose != null) {
 					onClose();
+				}
+				if (onErrorKind != null) {
+					onErrorKind(ConnectionLost, "Connection closed by peer");
 				}
 				return;
 			} catch (e:Error) {
@@ -387,16 +441,12 @@ class Socket {
 						// No data available, normal
 					default:
 						close();
-						if (onError != null) {
-							onError("Read error: " + e);
-						}
+						_emitError(ConnectionLost, "Read error: " + e);
 						return;
 				}
 			} catch (e:Dynamic) {
 				close();
-				if (onError != null) {
-					onError("Read error: " + e);
-				}
+				_emitError(ConnectionLost, "Read error: " + e);
 				return;
 			}
 		}
@@ -411,9 +461,21 @@ class Socket {
 		}
 	}
 
+	/**
+	 * Send a failure to both onError and the optional onErrorKind callbacks.
+	 */
+	function _emitError(kind:SocketErrorKind, message:String):Void {
+		if (onError != null) {
+			onError(message);
+		}
+		if (onErrorKind != null) {
+			onErrorKind(kind, message);
+		}
+	}
+
 	// Getters
 	function get_bytesAvailable():Int {
-		return _receivedBytes.length;
+		return _receiveBuffer.available;
 	}
 
 	function get_connected():Bool {

@@ -1,2 +1,10 @@
 bin/
 *.kate-swp
+tests/cpp/
+tests/js/
+tests/neko/
+tests/hl/
+tests/java/
+tests/cs/
+tests/php/
+tests_tmp_certs_*/

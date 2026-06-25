@@ -1,0 +1,17 @@
+# Build and run the hxSockets test suite on the C++ (hxcpp) target.
+# This is the primary target for the library (a sys/C++ library) and is the one
+# that exercises the mTLS, manual-poll, framed-read and receive-buffer tests.
+#
+#   haxe tests_cpp.hxml
+#
+# Requires: haxe, the utest and hxcpp haxelibs, a working C++ toolchain, and
+# (for the mTLS tests only) an `openssl` binary on PATH. When openssl is absent
+# the mTLS tests SKIP rather than fail.
+-debug
+-lib utest
+-lib hxcpp
+-cp src
+-cp tests
+-main hxSockets.tests.HaxeSocketTests
+-cpp tests/cpp
+-cmd echo "Running C++ tests..." && tests/cpp/HaxeSocketTests-debug

@@ -4,10 +4,12 @@ import hxSockets.X509Certificate;
 import haxe.io.Error;
 import sys.net.Host;
 import sys.ssl.Certificate;
+import sys.ssl.Key;
 
 /**
- * Secure TLS/SSL socket implementation
- * Extends Socket with encryption and certificate validation
+ * Secure TLS/SSL socket. Extends Socket with encryption and certificate
+ * validation. Supports server-authenticated TLS (default) and mutual TLS
+ * via setClientCertificate() / setCA().
  */
 class SecureSocket extends Socket {
 	public var serverCertificate(get, never):X509Certificate;
@@ -19,14 +21,43 @@ class SecureSocket extends Socket {
 	var _handshakeComplete:Bool = false;
 	var _handshakeStarted:Bool = false;
 
+	// Optional mTLS / pinning material; null unless configured.
+	var _clientCert:Certificate;
+	var _clientKey:Key;
+	var _serverCa:Certificate;
+
 	var secureSocket:sys.ssl.Socket;
 
-	public function new() {
-		super();
+	/**
+	 * Create a secure socket. See Socket.new for the manualPoll argument.
+	 */
+	public function new(manualPoll:Bool = false) {
+		super(manualPoll);
 	}
 
 	/**
-	 * Connect to specified host and port using TLS/SSL
+	 * Set a PEM client certificate and key to present during the handshake
+	 * (mutual TLS), optionally pinning the server CA too. Applied on the next
+	 * connect().
+	 */
+	public function setClientCertificate(certPemPath:String, keyPemPath:String, ?caPemPath:String):Void {
+		_clientCert = Certificate.loadFile(certPemPath);
+		_clientKey = Key.loadFile(keyPemPath);
+		if (caPemPath != null) {
+			_serverCa = Certificate.loadFile(caPemPath);
+		}
+	}
+
+	/**
+	 * Pin a server CA certificate (PEM file) to validate the server against.
+	 * Applied on the next connect().
+	 */
+	public function setCA(caPemPath:String):Void {
+		_serverCa = Certificate.loadFile(caPemPath);
+	}
+
+	/**
+	 * Connect to a host and port using TLS/SSL.
 	 */
 	override public function connect(host:String, port:Int):Void {
 		if (_socket != null) {
@@ -34,9 +65,7 @@ class SecureSocket extends Socket {
 		}
 
 		if (port < 0 || port > 65535) {
-			if (onError != null) {
-				onError("Invalid port number: " + port);
-			}
+			_emitError(Other, "Invalid port number: " + port);
 			return;
 		}
 
@@ -44,9 +73,7 @@ class SecureSocket extends Socket {
 		try {
 			h = new Host(host);
 		} catch (e:Dynamic) {
-			if (onError != null) {
-				onError("Invalid host: " + host);
-			}
+			_emitError(Other, "Invalid host: " + host);
 			return;
 		}
 
@@ -58,6 +85,7 @@ class SecureSocket extends Socket {
 		_handshakeStarted = false;
 		_peerCert = null;
 		_serverCertificate = null;
+		_receiveBuffer.clear();
 
 		try {
 			_socket = new sys.ssl.Socket();
@@ -65,17 +93,35 @@ class SecureSocket extends Socket {
 			secureSocket.setBlocking(false);
 			secureSocket.setHostname(host);
 			secureSocket.verifyCert = true;
+			// Apply pinning + client identity before the handshake.
+			if (_serverCa != null) {
+				secureSocket.setCA(_serverCa);
+			}
+			if (_clientCert != null) {
+				secureSocket.setCertificate(_clientCert, _clientKey);
+			}
 			secureSocket.connect(h, port);
 			secureSocket.setFastSend(true);
 		} catch (e:Dynamic) {
 			_certificateStatus = INVALID;
-			if (onError != null) {
-				onError("Connection failed: " + e);
-			}
+			_emitError(Other, "Connection failed: " + e);
 			return;
 		}
 
 		_startPolling();
+	}
+
+	/**
+	 * Close the secure socket. Idempotent; resets TLS handshake state.
+	 */
+	override public function close():Void {
+		super.close();
+		secureSocket = null;
+		_handshakeComplete = false;
+		_handshakeStarted = false;
+		_certificateStatus = UNKNOWN;
+		_peerCert = null;
+		_serverCertificate = null;
 	}
 
 	override function _poll():Void {
@@ -109,10 +155,8 @@ class SecureSocket extends Socket {
 		// Handle connection failure
 		if (doClose && !_connected) {
 			_certificateStatus = INVALID;
-			if (onError != null) {
-				onError("Connection timeout");
-			}
 			close();
+			_emitError(Timeout, "Connection timeout");
 			return;
 		}
 
@@ -134,17 +178,13 @@ class SecureSocket extends Socket {
 					default:
 						_certificateStatus = INVALID;
 						close();
-						if (onError != null) {
-							onError("TLS handshake failed: " + e);
-						}
+						_emitError(_classifyHandshakeError(Std.string(e)), "TLS handshake failed: " + e);
 						return;
 				}
 			} catch (e:Dynamic) {
 				_certificateStatus = INVALID;
 				close();
-				if (onError != null) {
-					onError("TLS handshake failed: " + e);
-				}
+				_emitError(_classifyHandshakeError(Std.string(e)), "TLS handshake failed: " + e);
 				return;
 			}
 
@@ -168,20 +208,28 @@ class SecureSocket extends Socket {
 				} else {
 					_certificateStatus = INVALID;
 					close();
-					if (onError != null) {
-						onError("Invalid server certificate");
-					}
+					_emitError(CertificateRejected, "Invalid server certificate");
 					return;
 				}
 			} catch (e:Dynamic) {
 				_certificateStatus = INVALID;
 				close();
-				if (onError != null) {
-					onError("Certificate validation failed: " + e);
-				}
+				_emitError(CertificateRejected, "Certificate validation failed: " + e);
 				return;
 			}
 		}
+	}
+
+	/**
+	 * Classify a handshake failure string as a certificate rejection or a
+	 * generic handshake failure.
+	 */
+	function _classifyHandshakeError(message:String):SocketErrorKind {
+		var m = message.toLowerCase();
+		if (m.indexOf("cert") > -1 || m.indexOf("verify") > -1 || m.indexOf("ca ") > -1 || m.indexOf("x509") > -1) {
+			return CertificateRejected;
+		}
+		return TlsHandshakeFailed;
 	}
 
 	function _createCertificateObject(cert:Certificate):X509Certificate {
