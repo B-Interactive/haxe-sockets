@@ -104,7 +104,7 @@ class SecureSocket extends Socket {
 			secureSocket.setFastSend(true);
 		} catch (e:Dynamic) {
 			_certificateStatus = INVALID;
-			_emitError(Other, "Connection failed: " + e);
+			_emitError(Other, "Connection failed");
 			return;
 		}
 
@@ -178,13 +178,13 @@ class SecureSocket extends Socket {
 					default:
 						_certificateStatus = INVALID;
 						close();
-						_emitError(_classifyHandshakeError(Std.string(e)), "TLS handshake failed: " + e);
+						_emitError(_classifyHandshakeError(Std.string(e)), "TLS handshake failed");
 						return;
 				}
 			} catch (e:Dynamic) {
 				_certificateStatus = INVALID;
 				close();
-				_emitError(_classifyHandshakeError(Std.string(e)), "TLS handshake failed: " + e);
+				_emitError(_classifyHandshakeError(Std.string(e)), "TLS handshake failed");
 				return;
 			}
 
@@ -193,28 +193,47 @@ class SecureSocket extends Socket {
 				return;
 			}
 
-			// Handshake complete, validate certificate
+			// Handshake complete, validate certificate.
+			// handshake() is the authoritative check (trust chain, hostname)
 			try {
 				_peerCert = secureSocket.peerCertificate();
-				if (_peerCert != null) {
-					_certificateStatus = TRUSTED;
-					_serverCertificate = _createCertificateObject(_peerCert);
-					_handshakeComplete = true;
-					_connected = true;
-
-					if (onConnect != null) {
-						onConnect();
-					}
-				} else {
+				if (_peerCert == null) {
 					_certificateStatus = INVALID;
 					close();
 					_emitError(CertificateRejected, "Invalid server certificate");
 					return;
 				}
+
+				// Build the wrapper so validity dates are available for the checks below.
+				_serverCertificate = _createCertificateObject(_peerCert);
+
+				// The platform TLS handshake is the primary check, this is an extra check.
+				var now = Date.now().getTime();
+				if (_serverCertificate.validNotBefore != null && now < _serverCertificate.validNotBefore.getTime()) {
+					_certificateStatus = NOT_YET_VALID;
+					close();
+					_emitError(CertificateRejected, "Server certificate not yet valid");
+					return;
+				}
+				if (_serverCertificate.validNotAfter != null && now > _serverCertificate.validNotAfter.getTime()) {
+					_certificateStatus = EXPIRED;
+					close();
+					_emitError(CertificateRejected, "Server certificate expired");
+					return;
+				}
+
+				// All checks passed: the handshake verified trust and the validity window is good.
+				_certificateStatus = TRUSTED;
+				_handshakeComplete = true;
+				_connected = true;
+
+				if (onConnect != null) {
+					onConnect();
+				}
 			} catch (e:Dynamic) {
 				_certificateStatus = INVALID;
 				close();
-				_emitError(CertificateRejected, "Certificate validation failed: " + e);
+				_emitError(CertificateRejected, "Certificate validation failed");
 				return;
 			}
 		}
@@ -223,11 +242,21 @@ class SecureSocket extends Socket {
 	/**
 	 * Classify a handshake failure string as a certificate rejection or a
 	 * generic handshake failure.
+	 *
+	 * Best-effort guess based on the error text, so results can vary by platform.
+	 * It only picks the error kind; either way the connection is still closed.
 	 */
 	function _classifyHandshakeError(message:String):SocketErrorKind {
 		var m = message.toLowerCase();
-		if (m.indexOf("cert") > -1 || m.indexOf("verify") > -1 || m.indexOf("ca ") > -1 || m.indexOf("x509") > -1) {
-			return CertificateRejected;
+		var certIndicators = [
+			"certificate", "cert", "verify", "verification",
+			"x509", "ca cert", "unknown ca", "self signed",
+			"self-signed", "trust", "chain", "expired"
+		];
+		for (token in certIndicators) {
+			if (m.indexOf(token) > -1) {
+				return CertificateRejected;
+			}
 		}
 		return TlsHandshakeFailed;
 	}
