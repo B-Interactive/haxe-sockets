@@ -11,14 +11,19 @@ class ReceiveBuffer {
 	var _data:Bytes;
 	var _readPos:Int = 0;
 	var _writePos:Int = 0;
+	var _maxCapacity:Int;
 
 	/**
 	 * Create a buffer with an initial capacity (it grows on demand).
 	 */
-	public function new(initialCapacity:Int = 4096) {
+	public function new(initialCapacity:Int = 4096, maxCapacity:Int = 16 * 1024 * 1024) {
 		if (initialCapacity < 16) {
 			initialCapacity = 16;
 		}
+		if (maxCapacity < initialCapacity) {
+			maxCapacity = initialCapacity;
+		}
+		_maxCapacity = maxCapacity;
 		_data = Bytes.alloc(initialCapacity);
 	}
 
@@ -32,11 +37,23 @@ class ReceiveBuffer {
 	}
 
 	/**
+	 * Remaining capacity before the buffer's maximum is reached (for backpressure).
+	 */
+	public var freeCapacity(get, never):Int;
+
+	function get_freeCapacity():Int {
+		return _maxCapacity - available;
+	}
+
+	/**
 	 * Append length bytes from src (starting at srcOffset) to the buffer.
 	 */
 	public function write(src:Bytes, srcOffset:Int, length:Int):Void {
 		if (length <= 0) {
 			return;
+		}
+		if (srcOffset < 0 || length < 0 || srcOffset + length > src.length) {
+			throw "ReceiveBuffer.write: source range out of bounds";
 		}
 		_ensureWritable(length);
 		_data.blit(_writePos, src, srcOffset, length);
@@ -50,6 +67,9 @@ class ReceiveBuffer {
 	public function read(dest:Bytes, destOffset:Int, length:Int):Void {
 		if (length <= 0) {
 			return;
+		}
+		if (destOffset < 0 || destOffset + length > dest.length) {
+			throw "ReceiveBuffer.read: destination range out of bounds";
 		}
 		if (length > available) {
 			throw "ReceiveBuffer.read: insufficient data";
@@ -65,6 +85,9 @@ class ReceiveBuffer {
 	public function peek(dest:Bytes, destOffset:Int, length:Int):Void {
 		if (length <= 0) {
 			return;
+		}
+		if (destOffset < 0 || destOffset + length > dest.length) {
+			throw "ReceiveBuffer.peek: destination range out of bounds";
 		}
 		if (length > available) {
 			throw "ReceiveBuffer.peek: insufficient data";
@@ -133,12 +156,23 @@ class ReceiveBuffer {
 			return;
 		}
 
+		// Enforce the maximum capacity before growing (also guards integer overflow).
+		var needed = used + length;
+		if (needed < 0 || needed > _maxCapacity) {
+			throw "ReceiveBuffer: capacity limit exceeded";
+		}
+
 		// Otherwise grow the buffer, copying the live data.
 		var newCapacity = _data.length;
 		if (newCapacity < 16) {
 			newCapacity = 16;
 		}
-		while (used + length > newCapacity) {
+		while (newCapacity < needed) {
+			if (newCapacity > (_maxCapacity >> 1)) {
+				// Next double would meet or exceed the cap; clamp and stop.
+				newCapacity = _maxCapacity;
+				break;
+			}
 			newCapacity <<= 1;
 		}
 		var grown = Bytes.alloc(newCapacity);
