@@ -49,6 +49,8 @@ class Socket {
 	var _port:Int;
 	var _receiveBuffer:ReceiveBuffer;
 	var _outputBuffer:BytesBuffer;
+	var _pending:Bytes = null;
+	var _pendingPos:Int = 0;
 	var _readBuffer:Bytes;
 	var _timestamp:Float;
 	var _pollTimer:haxe.Timer;
@@ -124,7 +126,7 @@ class Socket {
 			_socket.connect(h, port);
 			_socket.setFastSend(true);
 		} catch (e:Dynamic) {
-			_emitError(Other, "Connection failed: " + e);
+			_emitError(Other, "Connection failed");
 			return;
 		}
 
@@ -149,6 +151,8 @@ class Socket {
 			_receiveBuffer.clear();
 		}
 		_outputBuffer = new BytesBuffer();
+		_pending = null;
+		_pendingPos = 0;
 	}
 
 	/**
@@ -180,19 +184,19 @@ class Socket {
 	 * Read length bytes from the input buffer into dest. If length is 0, reads
 	 * all available bytes. Throws when no data is available.
 	 */
-	public function readBytes(bytes:Bytes, offset:UInt = 0, length:UInt = 0):Void {
+	public function readBytes(bytes:Bytes, offset:Int = 0, length:Int = 0):Void {
 		if (_socket == null) {
 			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
+		}
+
+		if (offset < 0 || length < 0) {
+			throw new Exception("Offset or length out of bounds");
 		}
 
 		var availableLength = _receiveBuffer.available;
 
 		if (availableLength == 0) {
 			throw new Exception("There is insufficient data available to read.");
-		}
-
-		if (offset < 0) {
-			throw new Exception("Offset out of bounds");
 		}
 
 		var actualLength:Int = length;
@@ -202,10 +206,14 @@ class Socket {
 			actualLength = Std.int(Math.min(length, availableLength));
 		}
 
+		if (offset + actualLength > bytes.length) {
+			throw new Exception("Destination buffer too small");
+		}
+
 		try {
 			_receiveBuffer.read(bytes, offset, actualLength);
 		} catch (e:Dynamic) {
-			throw new Exception("Error writing bytes: " + e);
+			throw new Exception("Error reading bytes");
 		}
 	}
 
@@ -298,8 +306,8 @@ class Socket {
 		try {
 			readBytes(bytes, 0, actualLength);
 		} catch (e:Exception) {
-			trace("Error performing readUTFBytes() : " + e);
-			return "";
+			_emitError(Other, "Error reading UTF bytes");
+			throw new Exception("Error reading UTF bytes");
 		}
 
 		return bytes.sub(0, bytes.length).toString();
@@ -313,18 +321,31 @@ class Socket {
 			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
 
-		var outputBytes = _outputBuffer.getBytes();
-		if (outputBytes.length > 0) {
-			try {
-				_socket.output.writeBytes(outputBytes, 0, outputBytes.length);
-				_outputBuffer = new BytesBuffer();
-			} catch (e:Dynamic) {
-				switch (e) {
-					case Error.Blocked | Error.Custom(Error.Blocked):
-						// Buffer is full, try again later
-					default:
-						_emitError(ConnectionLost, "Write error: " + e);
-				}
+		// Promote any newly queued output into the pending buffer.
+		if (_pending == null) {
+			var b = _outputBuffer.getBytes();
+			if (b.length == 0) {
+				return;
+			}
+			_pending = b;
+			_pendingPos = 0;
+			_outputBuffer = new BytesBuffer();
+		}
+
+		try {
+			var remaining = _pending.length - _pendingPos;
+			var wrote = _socket.output.writeBytes(_pending, _pendingPos, remaining);
+			_pendingPos += wrote;
+			if (_pendingPos >= _pending.length) {
+				_pending = null;
+				_pendingPos = 0;
+			}
+		} catch (e:Dynamic) {
+			switch (e) {
+				case Error.Blocked | Error.Custom(Error.Blocked):
+					// Send buffer full; keep _pending/_pendingPos and retry next poll.
+				default:
+					_emitError(ConnectionLost, "Write error");
 			}
 		}
 	}
@@ -408,19 +429,31 @@ class Socket {
 				var len:Int;
 				// Only allocate a chunk buffer when an onData listener is set.
 				var chunk:BytesBuffer = null;
+				var bytesThisPoll = 0;
+				final maxBytesPerPoll = 1 << 20;
 
 				do {
+					if (_receiveBuffer.freeCapacity < _readBuffer.length) {
+						break; // backpressure: let the application drain before reading more
+					}
 					len = _socket.input.readBytes(_readBuffer, 0, _readBuffer.length);
 					if (len > 0) {
-						_receiveBuffer.write(_readBuffer, 0, len);
+						try {
+							_receiveBuffer.write(_readBuffer, 0, len);
+						} catch (e:Dynamic) {
+							close();
+							_emitError(Other, "receive buffer overflow");
+							return;
+						}
 						if (onData != null) {
 							if (chunk == null) {
 								chunk = new BytesBuffer();
 							}
 							chunk.addBytes(_readBuffer, 0, len);
 						}
+						bytesThisPoll += len;
 					}
-				} while (len == _readBuffer.length);
+				} while (len == _readBuffer.length && bytesThisPoll < maxBytesPerPoll);
 
 				if (chunk != null && onData != null) {
 					// Pass the freshly received bytes; they also stay in the buffer.
@@ -441,12 +474,12 @@ class Socket {
 						// No data available, normal
 					default:
 						close();
-						_emitError(ConnectionLost, "Read error: " + e);
+						_emitError(ConnectionLost, "Read error");
 						return;
 				}
 			} catch (e:Dynamic) {
 				close();
-				_emitError(ConnectionLost, "Read error: " + e);
+				_emitError(ConnectionLost, "Read error");
 				return;
 			}
 		}
