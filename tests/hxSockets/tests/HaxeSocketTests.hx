@@ -9,6 +9,7 @@ import hxSockets.tests.unit.ReceiveBufferTests;
 #if (cpp || neko || hl)
 import hxSockets.tests.unit.FramedReadTests;
 import hxSockets.tests.unit.ManualPollTests;
+import hxSockets.tests.unit.FlushTests;
 import hxSockets.tests.unit.MtlsTests;
 #end
 import utest.Runner;

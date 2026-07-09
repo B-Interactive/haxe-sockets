@@ -321,13 +321,14 @@ class Socket {
 			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
 
-		// Promote any newly queued output into the pending buffer.
+		// Move any queued output into the pending buffer. Check length first so
+		// an empty buffer is never consumed, then getBytes() and replace it with
+		// a fresh buffer for the next write.
 		if (_pending == null) {
-			var b = _outputBuffer.getBytes();
-			if (b.length == 0) {
+			if (_outputBuffer.length == 0) {
 				return;
 			}
-			_pending = b;
+			_pending = _outputBuffer.getBytes();
 			_pendingPos = 0;
 			_outputBuffer = new BytesBuffer();
 		}
