@@ -102,6 +102,27 @@ class SecureSocket extends Socket {
 			}
 			secureSocket.connect(h, port);
 			secureSocket.setFastSend(true);
+		} catch (e:Error) {
+			switch (e) {
+				case Error.Blocked | Error.Custom(Error.Blocked):
+					// The TLS handshake has started but is not finished yet.
+					// Mark it in progress so _poll() continues it, the same as
+					// later handshake attempts.
+					_handshakeStarted = true;
+				default:
+					_certificateStatus = INVALID;
+					_emitError(Other, "Connection failed");
+					return;
+			}
+		} catch (e:String) {
+			// A non-blocking connect reports "Blocking" while the TCP handshake
+			// is still in progress. _poll() then detects the connection and runs
+			// the TLS handshake. Any other message is a real failure.
+			if (e != "Blocking") {
+				_certificateStatus = INVALID;
+				_emitError(Other, "Connection failed");
+				return;
+			}
 		} catch (e:Dynamic) {
 			_certificateStatus = INVALID;
 			_emitError(Other, "Connection failed");
@@ -154,8 +175,10 @@ class SecureSocket extends Socket {
 
 		// Handle connection failure
 		if (doClose && !_connected) {
-			_certificateStatus = INVALID;
 			close();
+			// Set after close() so the status reflects the failure, as close()
+			// resets it to UNKNOWN.
+			_certificateStatus = INVALID;
 			_emitError(Timeout, "Connection timeout");
 			return;
 		}
