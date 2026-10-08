@@ -6,7 +6,8 @@ package hxSockets;
  * (platform error text) and should be treated as advisory.
  */
 enum abstract SocketErrorKind(String) from String to String {
-	/** The peer closed the connection, or the link was lost. */
+	/** The link was lost during I/O (a read or write fault). A clean peer
+	 *  close is not a fault and does not report this kind. */
 	var ConnectionLost = "connectionLost";
 
 	/** The connect attempt timed out. */

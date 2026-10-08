@@ -15,20 +15,28 @@ import sys.net.Socket as SysSocket;
 class Socket {
 	/** Fired once TCP connect succeeds (SecureSocket: after TLS + validity checks). */
 	public var onConnect:Void->Void;
-	/** Fired when the peer closes (EOF). Local close() does not invoke this. */
+	/**
+	 * Fired when the peer closes (EOF); local close() does not invoke this.
+	 * A clean peer close is a normal shutdown: onError and onErrorKind are
+	 * reserved for abnormal failures and do not fire on this path.
+	 */
 	public var onClose:Void->Void;
 	/**
 	 * Wake-up when bytes arrive. Argument is a snapshot of the latest read;
 	 * those bytes remain in the receive buffer until consumed via read APIs.
 	 */
 	public var onData:Bytes->Void;
-	/** Human-readable failure message (not fired on peer EOF today; see onClose). */
+	/**
+	 * Human-readable failure message for abnormal faults (read errors, write
+	 * errors, timeouts, handshake failures). Always paired with onErrorKind and
+	 * the same message. A clean peer EOF is not a fault: it fires onClose only.
+	 */
 	public var onError:String->Void;
 
 	/**
-	 * Optional typed-error callback, usually invoked alongside onError with a
-	 * SocketErrorKind so callers can react without parsing the message.
-	 * Peer EOF currently fires onErrorKind without onError.
+	 * Optional typed-error callback, always invoked alongside onError with a
+	 * SocketErrorKind so callers can react without parsing the message. A clean
+	 * peer EOF does not fire it; onClose is the peer-close signal.
 	 */
 	public var onErrorKind:SocketErrorKind->String->Void;
 
@@ -489,11 +497,10 @@ class Socket {
 				}
 			} catch (e:Eof) {
 				close();
+				// A clean peer close is a normal shutdown: only onClose
+				// fires, the error callbacks are reserved for faults.
 				if (onClose != null) {
 					onClose();
-				}
-				if (onErrorKind != null) {
-					onErrorKind(ConnectionLost, "Connection closed by peer");
 				}
 				return;
 			} catch (e:Error) {

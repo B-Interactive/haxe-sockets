@@ -11,6 +11,7 @@ import hxSockets.tests.unit.FramedReadTests;
 import hxSockets.tests.unit.ManualPollTests;
 import hxSockets.tests.unit.FlushTests;
 import hxSockets.tests.unit.MtlsTests;
+import hxSockets.tests.unit.PeerEofTests;
 #end
 import utest.Runner;
 import utest.ui.Report;
@@ -38,6 +39,7 @@ class HaxeSocketTests {
 		runner.addCase(new FramedReadTests());
 		runner.addCase(new ManualPollTests());
 		runner.addCase(new MtlsTests());
+		runner.addCase(new PeerEofTests());
 		#end
 
 		// Create report and run
