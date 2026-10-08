@@ -8,6 +8,8 @@ import hxSockets.SecureSocket;
 import hxSockets.SocketErrorKind;
 import hxSockets.X509Certificate;
 #if (cpp || neko || hl)
+import hxSockets.tests.CertGen;
+import hxSockets.tests.MtlsServer;
 import hxSockets.tests.SilentServer;
 #end
 import haxe.io.Bytes;
@@ -40,6 +42,20 @@ class SecureSocketTests extends Test {
 
 	function testSecureSocket_InitialCertificateStatus() {
 		Assert.equals(CertificateStatus.UNKNOWN, socket.serverCertificateStatus);
+	}
+
+	function testSecureSocket_Close_PreservesFailureStatus() {
+		// A terminal failure status survives close() so the cause of a TLS error
+		// stays inspectable; any other status resets, as connect() will anyway.
+		for (failure in [CertificateStatus.INVALID, CertificateStatus.EXPIRED, CertificateStatus.NOT_YET_VALID]) {
+			socket._certificateStatus = failure;
+			socket.close();
+			Assert.equals(failure, socket.serverCertificateStatus, 'failure status "$failure" should survive close()');
+		}
+
+		socket._certificateStatus = CertificateStatus.TRUSTED;
+		socket.close();
+		Assert.equals(CertificateStatus.UNKNOWN, socket.serverCertificateStatus, "a trusted status should reset on close()");
 	}
 
 	// HTTPS Connection Tests
@@ -348,9 +364,70 @@ class SecureSocketTests extends Test {
 		Assert.isFalse(pollSocket.connected, "the socket should be torn down after the timeout");
 		Assert.isTrue(elapsed < 2.0, 'the timeout should abort near the deadline, took ${elapsed}s');
 		Assert.equals(1, errorCount, "the timeout should fire once, not repeat after teardown");
+		Assert.equals(CertificateStatus.INVALID, pollSocket.serverCertificateStatus,
+			"a timeout should leave a failure status that survives teardown");
 
 		pollSocket.close();
+		Assert.equals(CertificateStatus.INVALID, pollSocket.serverCertificateStatus,
+			"close() after a timeout must not wipe the preserved status");
 		server.stop();
+		async.done();
+	}
+
+	@:timeout(25000)
+	function testSecureSocket_WrongCa_KeepsFailureStatusAfterError(async:Async) {
+		// A server signed by a throwaway CA is not trusted by the platform roots,
+		// so the handshake must fail. The failure status has to stay inspectable
+		// after the error callbacks fire and the socket tears down. Manual polling
+		// drives the handshake deterministically.
+		var certs = CertGen.generate();
+		if (certs == null) {
+			Assert.warn("openssl not available - skipping wrong-CA status test");
+			async.done();
+			return;
+		}
+
+		var server = new MtlsServer(certs.caCert, certs.serverCert, certs.serverKey, Bytes.ofString("NOPE"));
+		server.start();
+
+		var pollSocket = new SecureSocket(true);
+		pollSocket.timeout = 8000;
+
+		var connected = false;
+		var errored = false;
+
+		pollSocket.onConnect = function() {
+			connected = true;
+		};
+		pollSocket.onError = function(msg) {
+			if (msg.indexOf("Blocked") == -1 && msg.indexOf("Blocking") == -1) {
+				errored = true;
+			}
+		};
+
+		// No setCA(): the platform trust store must reject the throwaway CA.
+		pollSocket.connect("127.0.0.1", server.port);
+
+		var start = Sys.time();
+		while (Sys.time() - start < 12 && !errored && !connected) {
+			pollSocket.poll();
+			Sys.sleep(0.005);
+		}
+
+		Assert.isFalse(connected, "an untrusted server certificate must not connect");
+		Assert.isTrue(errored, "the failed handshake should surface through onError");
+		Assert.isFalse(pollSocket.connected, "the socket should be torn down after the failure");
+		Assert.isTrue(pollSocket.serverCertificateStatus != CertificateStatus.UNKNOWN,
+			'a failure status should remain after the error, got ${pollSocket.serverCertificateStatus}');
+		Assert.equals(CertificateStatus.INVALID, pollSocket.serverCertificateStatus,
+			"an untrusted CA should leave the invalid status");
+
+		pollSocket.close();
+		Assert.equals(CertificateStatus.INVALID, pollSocket.serverCertificateStatus,
+			"a later close() must not wipe the preserved failure status");
+
+		server.stop();
+		certs.cleanup();
 		async.done();
 	}
 	#end

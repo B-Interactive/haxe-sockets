@@ -12,15 +12,21 @@ import sys.ssl.Key;
  * Server-authenticated TLS by default; mutual TLS via setClientCertificate() / setCA().
  */
 class SecureSocket extends Socket {
-	/** Peer certificate view after a successful handshake path; cleared on close(). */
+	/**
+	 * Peer certificate view after a handshake path populates one. Kept alongside
+	 * a preserved failure status across close(); cleared on the next connect().
+	 */
 	public var serverCertificate(get, never):X509Certificate;
 	/**
 	 * Validation status string. Values actually set today: trusted, unknown, invalid,
-	 * expired, notYetValid. close() resets to unknown — prefer onConnect for success.
+	 * expired, notYetValid. A failure value survives close() so the cause of a TLS
+	 * error stays inspectable after the error callbacks; the next connect() resets
+	 * to unknown. Prefer onConnect for success.
 	 */
 	public var serverCertificateStatus(get, never):CertificateStatus;
 
 	var _serverCertificate:X509Certificate;
+	@:allow(hxSockets.tests)
 	var _certificateStatus:CertificateStatus = UNKNOWN;
 	var _peerCert:Certificate;
 	var _handshakeComplete:Bool = false;
@@ -142,17 +148,31 @@ class SecureSocket extends Socket {
 	}
 
 	/**
-	 * Close the secure socket. Idempotent; resets TLS handshake state and sets
-	 * serverCertificateStatus to unknown. Client cert/CA config is retained for reconnect.
+	 * Close the secure socket. Idempotent; resets TLS handshake state. A terminal
+	 * failure status (and any captured certificate snapshot) is preserved so the
+	 * cause of a TLS error stays inspectable after the error callbacks; otherwise
+	 * the status returns to unknown. connect() always starts from a clean status.
+	 * Client cert/CA config is retained for reconnect.
 	 */
 	override public function close():Void {
 		super.close();
 		secureSocket = null;
 		_handshakeComplete = false;
 		_handshakeStarted = false;
-		_certificateStatus = UNKNOWN;
 		_peerCert = null;
+		if (_isFailureStatus(_certificateStatus)) {
+			return;
+		}
+		_certificateStatus = UNKNOWN;
 		_serverCertificate = null;
+	}
+
+	/**
+	 * True for statuses that record why a TLS attempt failed. These survive
+	 * close(); only connect() clears them.
+	 */
+	static function _isFailureStatus(status:CertificateStatus):Bool {
+		return status == INVALID || status == EXPIRED || status == NOT_YET_VALID;
 	}
 
 	override function _destroySocket():Void {
@@ -162,12 +182,14 @@ class SecureSocket extends Socket {
 
 	/**
 	 * Aborts a connect or handshake that has passed its wall-clock deadline:
-	 * closes the socket fully, then reports the timeout. The failure status is
-	 * set after close() so it is not reset to UNKNOWN by that call.
+	 * records the failure status, closes the socket fully (close() keeps a
+	 * failure status), then reports the timeout.
 	 */
 	function _abortConnectTimeout():Void {
+		if (!_isFailureStatus(_certificateStatus)) {
+			_certificateStatus = INVALID;
+		}
 		close();
-		_certificateStatus = INVALID;
 		_emitError(Timeout, "Connection timeout");
 	}
 
