@@ -38,6 +38,7 @@ class HaxeSocketTests {
 		#if (cpp || neko || hl)
 		runner.addCase(new FramedReadTests());
 		runner.addCase(new ManualPollTests());
+		runner.addCase(new FlushTests());
 		runner.addCase(new MtlsTests());
 		runner.addCase(new PeerEofTests());
 		#end

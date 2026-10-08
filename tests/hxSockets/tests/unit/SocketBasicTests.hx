@@ -68,6 +68,26 @@ class SocketBasicTests extends Test {
 			socket.writeString("test");
 		}, Exception);
 	}
+
+	function testSocket_WriteBytes_NullBytes() {
+		Assert.raises(function() {
+			socket.writeBytes(null);
+		}, Exception);
+	}
+
+	function testSocket_WriteBytes_NegativeOffset() {
+		var bytes = Bytes.ofString("test");
+		Assert.raises(function() {
+			socket.writeBytes(bytes, -1);
+		}, Exception);
+	}
+
+	function testSocket_WriteBytes_RangeBeyondEnd() {
+		var bytes = Bytes.ofString("test");
+		Assert.raises(function() {
+			socket.writeBytes(bytes, 2, 3);
+		}, Exception);
+	}
 	
 	function testSocket_ReadBytes_NotConnected() {
 		var bytes = Bytes.alloc(10);

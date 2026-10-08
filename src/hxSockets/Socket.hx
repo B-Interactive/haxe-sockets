@@ -191,6 +191,14 @@ class Socket {
 	 * Write bytes to the socket
 	 */
 	public function writeBytes(bytes:Bytes, offset:Int = 0, length:Int = 0):Void {
+		if (bytes == null) {
+			throw new Exception("Bytes cannot be null");
+		}
+
+		if (offset < 0 || length < 0 || offset + length > bytes.length) {
+			throw new Exception("Offset or length out of bounds");
+		}
+
 		if (_socket == null) {
 			throw new Exception("An I/O error occurred on the socket, or the socket is not open.");
 		}
