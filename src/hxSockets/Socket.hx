@@ -9,24 +9,36 @@ import sys.net.Host;
 import sys.net.Socket as SysSocket;
 
 /**
- * Event-driven TCP socket. Mimics the AIR SDK Socket API using native Haxe types.
+ * Client TCP socket for Haxe sys targets. OpenFL/AIR-inspired callback API using
+ * native Haxe types (haxe.io.Bytes), not a full EventDispatcher/ByteArray port.
  */
 class Socket {
-	// Events
+	/** Fired once TCP connect succeeds (SecureSocket: after TLS + validity checks). */
 	public var onConnect:Void->Void;
+	/** Fired when the peer closes (EOF). Local close() does not invoke this. */
 	public var onClose:Void->Void;
+	/**
+	 * Wake-up when bytes arrive. Argument is a snapshot of the latest read;
+	 * those bytes remain in the receive buffer until consumed via read APIs.
+	 */
 	public var onData:Bytes->Void;
+	/** Human-readable failure message (not fired on peer EOF today; see onClose). */
 	public var onError:String->Void;
 
 	/**
-	 * Optional typed-error callback, invoked alongside onError with a
+	 * Optional typed-error callback, usually invoked alongside onError with a
 	 * SocketErrorKind so callers can react without parsing the message.
+	 * Peer EOF currently fires onErrorKind without onError.
 	 */
 	public var onErrorKind:SocketErrorKind->String->Void;
 
 	// Properties
 	public var bytesAvailable(get, never):Int;
 	public var connected(get, never):Bool;
+	/**
+	 * Connection deadline in milliseconds, measured from the start of connect().
+	 * SecureSocket applies it to the TCP wait and the TLS handshake alike.
+	 */
 	public var timeout:Int = 20000; // milliseconds
 
 	#if sys
@@ -126,6 +138,9 @@ class Socket {
 			_socket.connect(h, port);
 			_socket.setFastSend(true);
 		} catch (e:Dynamic) {
+			// Release the socket so a failed connect leaves no descriptor behind
+			// and cannot accept writes against a half-built connection.
+			_destroySocket();
 			_emitError(Other, "Connection failed");
 			return;
 		}
@@ -136,9 +151,24 @@ class Socket {
 
 	/**
 	 * Close the socket. Idempotent; resets buffers so the instance can be
-	 * re-connect()ed.
+	 * re-connect()ed. Does not fire onClose (that is peer EOF only).
 	 */
 	public function close():Void {
+		_destroySocket();
+		if (_receiveBuffer != null) {
+			_receiveBuffer.clear();
+		}
+		_outputBuffer = new BytesBuffer();
+		_pending = null;
+		_pendingPos = 0;
+	}
+
+	/**
+	 * Stop polling and release the OS socket without touching the buffers.
+	 * Failure paths use this so no descriptor or half-built socket survives;
+	 * buffers stay for a subsequent full close().
+	 */
+	function _destroySocket():Void {
 		_stopPolling();
 		if (_socket != null) {
 			try {
@@ -147,12 +177,6 @@ class Socket {
 			_socket = null;
 		}
 		_connected = false;
-		if (_receiveBuffer != null) {
-			_receiveBuffer.clear();
-		}
-		_outputBuffer = new BytesBuffer();
-		_pending = null;
-		_pendingPos = 0;
 	}
 
 	/**
@@ -346,6 +370,9 @@ class Socket {
 				case Error.Blocked | Error.Custom(Error.Blocked):
 					// Send buffer full; keep _pending/_pendingPos and retry next poll.
 				default:
+					// A terminal write failure must not leave the socket connected:
+					// close first, then report it, like the other failure paths.
+					close();
 					_emitError(ConnectionLost, "Write error");
 			}
 		}

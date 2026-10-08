@@ -1,12 +1,12 @@
 {
   "name" : "haxe-sockets",
-  "description" : "A lightweight, cross-platform socket library for Haxe that mimics the AIR / OpenFL Socket and SecureSocket API's, distilled down to native Haxe with no dependencies",
+  "description" : "Client TCP and TLS sockets for Haxe sys targets. OpenFL/AIR-inspired API using callbacks and haxe.io.Bytes (not a full OpenFL port). Mutual TLS and CA pinning helpers included. No haxelib dependencies.",
   "version" : "0.0.1",
-  "releasenote": "Initial release",
+  "releasenote": "Pre-release client preview: Socket and SecureSocket only. No ServerSocket or DatagramSocket. Docs state production TLS limits honestly.",
   "url" : "https://github.com/B-Interactive/haxe-sockets",
   "classPath" : "src",
   "license" : "MIT",
-  "tags" : ["socket","securesocket","tcp","openfl","air","flash","net","networking"],
+  "tags" : ["socket","tcp","tls","ssl","networking","securesocket","sys"],
   "contributors": ["Bink"],
   "dependencies": { }
 }

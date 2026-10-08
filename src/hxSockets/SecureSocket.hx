@@ -7,12 +7,17 @@ import sys.ssl.Certificate;
 import sys.ssl.Key;
 
 /**
- * Secure TLS/SSL socket. Extends Socket with encryption and certificate
- * validation. Supports server-authenticated TLS (default) and mutual TLS
- * via setClientCertificate() / setCA().
+ * Client TLS socket for Haxe sys targets (sys.ssl). OpenFL/AIR-inspired SecureSocket
+ * surface using callbacks and haxe.io.Bytes — not a full OpenFL port.
+ * Server-authenticated TLS by default; mutual TLS via setClientCertificate() / setCA().
  */
 class SecureSocket extends Socket {
+	/** Peer certificate view after a successful handshake path; cleared on close(). */
 	public var serverCertificate(get, never):X509Certificate;
+	/**
+	 * Validation status string. Values actually set today: trusted, unknown, invalid,
+	 * expired, notYetValid. close() resets to unknown — prefer onConnect for success.
+	 */
 	public var serverCertificateStatus(get, never):CertificateStatus;
 
 	var _serverCertificate:X509Certificate;
@@ -37,8 +42,8 @@ class SecureSocket extends Socket {
 
 	/**
 	 * Set a PEM client certificate and key to present during the handshake
-	 * (mutual TLS), optionally pinning the server CA too. Applied on the next
-	 * connect().
+	 * (mutual TLS). Optional caPemPath pins the server CA and, like setCA,
+	 * replaces the platform trust store for this socket. Applied on the next connect().
 	 */
 	public function setClientCertificate(certPemPath:String, keyPemPath:String, ?caPemPath:String):Void {
 		_clientCert = Certificate.loadFile(certPemPath);
@@ -49,8 +54,9 @@ class SecureSocket extends Socket {
 	}
 
 	/**
-	 * Pin a server CA certificate (PEM file) to validate the server against.
-	 * Applied on the next connect().
+	 * Pin a server CA certificate (PEM file) for the next connect().
+	 * Replaces the platform trust store for this socket (exclusive pin), rather
+	 * than adding a CA beside system defaults. When never set, platform CAs are used.
 	 */
 	public function setCA(caPemPath:String):Void {
 		_serverCa = Certificate.loadFile(caPemPath);
@@ -111,6 +117,7 @@ class SecureSocket extends Socket {
 					_handshakeStarted = true;
 				default:
 					_certificateStatus = INVALID;
+					_destroySocket();
 					_emitError(Other, "Connection failed");
 					return;
 			}
@@ -120,11 +127,13 @@ class SecureSocket extends Socket {
 			// the TLS handshake. Any other message is a real failure.
 			if (e != "Blocking") {
 				_certificateStatus = INVALID;
+				_destroySocket();
 				_emitError(Other, "Connection failed");
 				return;
 			}
 		} catch (e:Dynamic) {
 			_certificateStatus = INVALID;
+			_destroySocket();
 			_emitError(Other, "Connection failed");
 			return;
 		}
@@ -133,7 +142,8 @@ class SecureSocket extends Socket {
 	}
 
 	/**
-	 * Close the secure socket. Idempotent; resets TLS handshake state.
+	 * Close the secure socket. Idempotent; resets TLS handshake state and sets
+	 * serverCertificateStatus to unknown. Client cert/CA config is retained for reconnect.
 	 */
 	override public function close():Void {
 		super.close();
@@ -143,6 +153,22 @@ class SecureSocket extends Socket {
 		_certificateStatus = UNKNOWN;
 		_peerCert = null;
 		_serverCertificate = null;
+	}
+
+	override function _destroySocket():Void {
+		super._destroySocket();
+		secureSocket = null;
+	}
+
+	/**
+	 * Aborts a connect or handshake that has passed its wall-clock deadline:
+	 * closes the socket fully, then reports the timeout. The failure status is
+	 * set after close() so it is not reset to UNKNOWN by that call.
+	 */
+	function _abortConnectTimeout():Void {
+		close();
+		_certificateStatus = INVALID;
+		_emitError(Timeout, "Connection timeout");
 	}
 
 	override function _poll():Void {
@@ -156,6 +182,14 @@ class SecureSocket extends Socket {
 			return;
 		}
 
+		// The timeout runs from connect() and spans the TCP wait and the TLS
+		// handshake alike, so a socket that is writable but keeps blocking in
+		// handshake() is aborted on the same deadline as an unreachable peer.
+		if (Sys.time() - _timestamp > timeout / 1000) {
+			_abortConnectTimeout();
+			return;
+		}
+
 		var doConnect = false;
 		var doClose = false;
 
@@ -165,8 +199,6 @@ class SecureSocket extends Socket {
 				var r = sys.net.Socket.select(null, [_socket], null, 0);
 				if (r.write.length > 0 && r.write[0] == _socket) {
 					doConnect = true;
-				} else if (Sys.time() - _timestamp > timeout / 1000) {
-					doClose = true;
 				}
 			} catch (e:Dynamic) {
 				doClose = true;
@@ -175,11 +207,7 @@ class SecureSocket extends Socket {
 
 		// Handle connection failure
 		if (doClose && !_connected) {
-			close();
-			// Set after close() so the status reflects the failure, as close()
-			// resets it to UNKNOWN.
-			_certificateStatus = INVALID;
-			_emitError(Timeout, "Connection timeout");
+			_abortConnectTimeout();
 			return;
 		}
 

@@ -1,17 +1,33 @@
 package hxSockets;
 
 /**
- * Certificate validation status
+ * Certificate validation status (OpenFL-style string values).
+ *
+ * Produced by SecureSocket today: trusted, unknown, invalid, expired, notYetValid.
+ * Declared for API parity but not assigned yet: invalidChain, principalMismatch,
+ * revoked, untrustedSigners.
+ *
+ * After close(), status is reset to unknown, so do not rely on status alone after
+ * failures; prefer onConnect as the success signal.
  */
 enum abstract CertificateStatus(String) from String to String {
+	/** Peer notAfter is before now (extra check after handshake). */
 	var EXPIRED = "expired";
+	/** Connect, handshake, or certificate failure (may be cleared to unknown on close). */
 	var INVALID = "invalid";
+	/** Not assigned yet (parity placeholder). */
 	var INVALID_CHAIN = "invalidChain";
+	/** Peer notBefore is after now (extra check after handshake). */
 	var NOT_YET_VALID = "notYetValid";
+	/** Not assigned yet (parity placeholder). */
 	var PRINCIPAL_MISMATCH = "principalMismatch";
+	/** Not assigned yet (parity placeholder). */
 	var REVOKED = "revoked";
+	/** Handshake and validity window accepted. */
 	var TRUSTED = "trusted";
+	/** Initial value, and value after close(). */
 	var UNKNOWN = "unknown";
+	/** Not assigned yet (parity placeholder). */
 	var UNTRUSTED_SIGNERS = "untrustedSigners";
 }
 

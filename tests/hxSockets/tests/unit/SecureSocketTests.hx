@@ -5,7 +5,11 @@ import utest.Test;
 import utest.Assert;
 import utest.Async;
 import hxSockets.SecureSocket;
+import hxSockets.SocketErrorKind;
 import hxSockets.X509Certificate;
+#if (cpp || neko || hl)
+import hxSockets.tests.SilentServer;
+#end
 import haxe.io.Bytes;
 
 /**
@@ -295,6 +299,61 @@ class SecureSocketTests extends Test {
 		// Use non-routable address (TEST-NET-1)
 		socket.connect("192.0.2.1", 443);
 	}
+
+	#if (cpp || neko || hl)
+	@:timeout(15000)
+	function testSecureSocket_HandshakeTimeout_WhileWritable(async:Async) {
+		// A peer that accepts the TCP connection but never answers the TLS
+		// ClientHello leaves the socket writable and the handshake blocked.
+		// The wall-clock timeout must still abort the attempt. Manual polling
+		// drives the socket deterministically.
+		var server = new SilentServer();
+		server.start();
+
+		var pollSocket = new SecureSocket(true);
+		pollSocket.timeout = 400;
+
+		var connected = false;
+		var errorCount = 0;
+		var lastKind:SocketErrorKind = null;
+
+		pollSocket.onConnect = function() {
+			connected = true;
+		};
+		pollSocket.onErrorKind = function(kind, msg) {
+			errorCount++;
+			lastKind = kind;
+		};
+
+		var start = Sys.time();
+		pollSocket.connect("127.0.0.1", server.port);
+
+		// Pump well past the deadline; the abort must come from the socket.
+		while (Sys.time() - start < 3 && errorCount == 0 && !connected) {
+			pollSocket.poll();
+			Sys.sleep(0.005);
+		}
+		var elapsed = Sys.time() - start;
+
+		// Keep pumping briefly to check the error fires only once.
+		var extraDeadline = Sys.time() + 0.2;
+		while (Sys.time() < extraDeadline) {
+			pollSocket.poll();
+			Sys.sleep(0.005);
+		}
+
+		Assert.isTrue(errorCount > 0, "a stalled handshake should abort with a timeout error");
+		Assert.equals(Timeout, lastKind, 'error kind should be Timeout, got $lastKind');
+		Assert.isFalse(connected, "a stalled handshake must not report connected");
+		Assert.isFalse(pollSocket.connected, "the socket should be torn down after the timeout");
+		Assert.isTrue(elapsed < 2.0, 'the timeout should abort near the deadline, took ${elapsed}s');
+		Assert.equals(1, errorCount, "the timeout should fire once, not repeat after teardown");
+
+		pollSocket.close();
+		server.stop();
+		async.done();
+	}
+	#end
 
 	@:timeout(2000)
 	function testSecureSocket_Close_AfterConnect(async:Async) {
