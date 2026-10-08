@@ -6,6 +6,7 @@ import hxSockets.tests.unit.SocketDataTransferTests;
 import hxSockets.tests.unit.CertificateTests;
 import hxSockets.tests.unit.SecureSocketTests;
 import hxSockets.tests.unit.ReceiveBufferTests;
+import hxSockets.tests.unit.BufferCapTests;
 #if (cpp || neko || hl)
 import hxSockets.tests.unit.FramedReadTests;
 import hxSockets.tests.unit.ManualPollTests;
@@ -32,6 +33,9 @@ class HaxeSocketTests {
 
 		// Pure unit tests for the non-reallocating receive buffer (all targets).
 		runner.addCase(new ReceiveBufferTests());
+
+		// Buffer cap knobs on Socket (loopback cases are sys-only inside).
+		runner.addCase(new BufferCapTests());
 
 		// Tests needing a local loopback / TLS server and threads are sys-only
 		// (built and run on the C++ target per the library's test conventions).

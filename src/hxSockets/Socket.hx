@@ -40,9 +40,37 @@ class Socket {
 	 */
 	public var onErrorKind:SocketErrorKind->String->Void;
 
+	/**
+	 * Default ceiling (bytes) for both the receive and the outbound buffer
+	 * unless configured otherwise through maxReceiveBuffer / maxSendBuffer.
+	 */
+	public static inline final DEFAULT_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+
 	// Properties
 	public var bytesAvailable(get, never):Int;
+	/**
+	 * Bytes queued for sending that have not left the socket yet: the output
+	 * buffer plus the unsent remainder of a partial flush.
+	 */
+	public var bytesPending(get, never):Int;
 	public var connected(get, never):Bool;
+	/**
+	 * Upper bound in bytes on data held in the receive buffer (default
+	 * DEFAULT_MAX_BUFFER_BYTES). When reached the socket stops reading and
+	 * relies on TCP flow control until the application drains it. Lower the
+	 * bound for constrained hosts; setting it below the bytes currently
+	 * buffered, or to a non-positive value, throws haxe.Exception.
+	 */
+	public var maxReceiveBuffer(get, set):Int;
+	/**
+	 * Upper bound in bytes on queued unsent output (default
+	 * DEFAULT_MAX_BUFFER_BYTES). writeBytes / writeString throw haxe.Exception
+	 * when a write would push the queue past this bound, surfacing send
+	 * backpressure at the API boundary instead of growing memory without
+	 * limit. Setting it below bytesPending, or to a non-positive value,
+	 * throws. The bound survives close() and reconnects.
+	 */
+	public var maxSendBuffer(get, set):Int;
 	/**
 	 * Connection deadline in milliseconds, measured from the start of connect().
 	 * SecureSocket applies it to the TCP wait and the TLS handshake alike.
@@ -68,6 +96,7 @@ class Socket {
 	var _host:String;
 	var _port:Int;
 	var _receiveBuffer:ReceiveBuffer;
+	var _maxSendBuffer:Int = DEFAULT_MAX_BUFFER_BYTES;
 	var _outputBuffer:BytesBuffer;
 	var _pending:Bytes = null;
 	var _pendingPos:Int = 0;
@@ -188,7 +217,8 @@ class Socket {
 	}
 
 	/**
-	 * Write bytes to the socket
+	 * Write bytes to the socket. Queued bytes count against maxSendBuffer; a
+	 * write that would exceed the cap throws haxe.Exception and queues nothing.
 	 */
 	public function writeBytes(bytes:Bytes, offset:Int = 0, length:Int = 0):Void {
 		if (bytes == null) {
@@ -205,6 +235,10 @@ class Socket {
 
 		if (length == 0) {
 			length = bytes.length - offset;
+		}
+
+		if (bytesPending + length > _maxSendBuffer) {
+			throw new Exception("Socket send buffer is full (maxSendBuffer = " + _maxSendBuffer + ")");
 		}
 
 		_outputBuffer.addBytes(bytes, offset, length);
@@ -471,16 +505,20 @@ class Socket {
 		if (_connected) {
 			try {
 				var len:Int;
+				var toRead = 0;
 				// Only allocate a chunk buffer when an onData listener is set.
 				var chunk:BytesBuffer = null;
 				var bytesThisPoll = 0;
 				final maxBytesPerPoll = 1 << 20;
 
 				do {
-					if (_receiveBuffer.freeCapacity < _readBuffer.length) {
+					var free = _receiveBuffer.freeCapacity;
+					if (free <= 0) {
 						break; // backpressure: let the application drain before reading more
 					}
-					len = _socket.input.readBytes(_readBuffer, 0, _readBuffer.length);
+					// Clamp the read to the space left under the receive cap.
+					toRead = Std.int(Math.min(_readBuffer.length, free));
+					len = _socket.input.readBytes(_readBuffer, 0, toRead);
 					if (len > 0) {
 						try {
 							_receiveBuffer.write(_readBuffer, 0, len);
@@ -497,7 +535,7 @@ class Socket {
 						}
 						bytesThisPoll += len;
 					}
-				} while (len == _readBuffer.length && bytesThisPoll < maxBytesPerPoll);
+				} while (len == toRead && bytesThisPoll < maxBytesPerPoll);
 
 				if (chunk != null && onData != null) {
 					// Pass the freshly received bytes; they also stay in the buffer.
@@ -554,8 +592,46 @@ class Socket {
 		return _receiveBuffer.available;
 	}
 
+	function get_bytesPending():Int {
+		var queued = _outputBuffer.length;
+		if (_pending != null) {
+			queued += _pending.length - _pendingPos;
+		}
+		return queued;
+	}
+
 	function get_connected():Bool {
 		return _connected;
+	}
+
+	function get_maxReceiveBuffer():Int {
+		return _receiveBuffer.maxCapacity;
+	}
+
+	function set_maxReceiveBuffer(value:Int):Int {
+		if (value <= 0) {
+			throw new Exception("maxReceiveBuffer must be a positive byte count");
+		}
+		if (value < _receiveBuffer.available) {
+			throw new Exception("maxReceiveBuffer cannot be below the bytes already buffered");
+		}
+		_receiveBuffer.maxCapacity = value;
+		return value;
+	}
+
+	function get_maxSendBuffer():Int {
+		return _maxSendBuffer;
+	}
+
+	function set_maxSendBuffer(value:Int):Int {
+		if (value <= 0) {
+			throw new Exception("maxSendBuffer must be a positive byte count");
+		}
+		if (value < bytesPending) {
+			throw new Exception("maxSendBuffer cannot be below bytesPending");
+		}
+		_maxSendBuffer = value;
+		return value;
 	}
 
 	#if sys

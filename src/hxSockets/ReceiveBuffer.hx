@@ -46,6 +46,28 @@ class ReceiveBuffer {
 	}
 
 	/**
+	 * Maximum number of bytes the buffer may hold. Writes beyond it are rejected.
+	 * Lowering it below the currently buffered count, or to a non-positive value,
+	 * is refused.
+	 */
+	public var maxCapacity(get, set):Int;
+
+	function get_maxCapacity():Int {
+		return _maxCapacity;
+	}
+
+	function set_maxCapacity(value:Int):Int {
+		if (value <= 0) {
+			throw "ReceiveBuffer.maxCapacity: must be a positive byte count";
+		}
+		if (value < available) {
+			throw "ReceiveBuffer.maxCapacity: below the currently buffered bytes";
+		}
+		_maxCapacity = value;
+		return value;
+	}
+
+	/**
 	 * Append length bytes from src (starting at srcOffset) to the buffer.
 	 */
 	public function write(src:Bytes, srcOffset:Int, length:Int):Void {
@@ -139,12 +161,19 @@ class ReceiveBuffer {
 	}
 
 	function _ensureWritable(length:Int):Void {
+		var used = available;
+		var needed = used + length;
+
+		// Enforce the maximum first so fast paths cannot bypass it (also guards
+		// integer overflow).
+		if (needed < 0 || needed > _maxCapacity) {
+			throw "ReceiveBuffer: capacity limit exceeded";
+		}
+
 		// Already fits at the tail.
 		if (_writePos + length <= _data.length) {
 			return;
 		}
-
-		var used = available;
 
 		// Compact to the front if that frees enough room (no allocation).
 		if (used + length <= _data.length) {
@@ -154,12 +183,6 @@ class ReceiveBuffer {
 				_writePos = used;
 			}
 			return;
-		}
-
-		// Enforce the maximum capacity before growing (also guards integer overflow).
-		var needed = used + length;
-		if (needed < 0 || needed > _maxCapacity) {
-			throw "ReceiveBuffer: capacity limit exceeded";
 		}
 
 		// Otherwise grow the buffer, copying the live data.

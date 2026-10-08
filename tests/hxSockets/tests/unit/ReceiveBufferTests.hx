@@ -140,4 +140,38 @@ class ReceiveBufferTests extends Test {
 			buf.read(dest, 0, 4);
 		}, String);
 	}
+
+	function testMaxCapacityRoundTrip() {
+		var buf = new ReceiveBuffer(16);
+		Assert.equals(16 * 1024 * 1024, buf.maxCapacity);
+		buf.maxCapacity = 64;
+		Assert.equals(64, buf.maxCapacity);
+	}
+
+	function testMaxCapacityRejectsInvalid() {
+		var buf = new ReceiveBuffer(16);
+		Assert.raises(function() buf.maxCapacity = 0, String);
+		Assert.raises(function() buf.maxCapacity = -5, String);
+		buf.write(bytesOf([1, 2, 3]), 0, 3);
+		// Lowering below the bytes already buffered is refused.
+		Assert.raises(function() buf.maxCapacity = 2, String);
+		// Reading out lets the cap drop again.
+		var dest = Bytes.alloc(3);
+		buf.read(dest, 0, 3);
+		buf.maxCapacity = 2;
+		Assert.equals(2, buf.maxCapacity);
+	}
+
+	function testLoweredCapEnforcedEvenWithAllocatedRoom() {
+		// Backing storage is 16 bytes, but the cap is what matters.
+		var buf = new ReceiveBuffer(16, 16);
+		buf.write(bytesOf([1, 2, 3, 4]), 0, 4);
+		buf.maxCapacity = 6;
+		Assert.raises(function() buf.write(bytesOf([5, 6, 7]), 0, 3), String);
+		// Freeing space under the cap lets the write succeed.
+		var dest = Bytes.alloc(3);
+		buf.read(dest, 0, 3);
+		buf.write(bytesOf([5, 6]), 0, 2);
+		Assert.equals(3, buf.available);
+	}
 }
