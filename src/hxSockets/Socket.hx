@@ -11,6 +11,10 @@ import sys.net.Socket as SysSocket;
 /**
  * Client TCP socket for Haxe sys targets. OpenFL/AIR-inspired callback API using
  * native Haxe types (haxe.io.Bytes), not a full EventDispatcher/ByteArray port.
+ *
+ * Callbacks run inline within a poll tick: they must not throw (exceptions are
+ * contained and ignored), a nested `poll()` from a callback is ignored,
+ * `close()` from a callback is safe, and `connect()` should not be called from one.
  */
 class Socket {
 	/** Fired once TCP connect succeeds (SecureSocket: after TLS + validity checks). */
@@ -104,6 +108,8 @@ class Socket {
 	var _timestamp:Float;
 	var _pollTimer:haxe.Timer;
 	var _manualPoll:Bool;
+	/** True while a poll tick (and its inline callbacks) is running. */
+	var _polling:Bool = false;
 
 	/**
 	 * Create a socket. When manualPoll is false (default) the socket polls I/O
@@ -137,7 +143,8 @@ class Socket {
 
 	/**
 	 * Drive one I/O tick: advance connect state, read data, flush output.
-	 * Used in manual-poll mode. Safe to call when not connected.
+	 * Used in manual-poll mode. Safe to call when not connected. Ignored when
+	 * called from inside a socket callback, which already runs within a tick.
 	 */
 	public function poll():Void {
 		_poll();
@@ -447,6 +454,25 @@ class Socket {
 	}
 
 	function _poll():Void {
+		// Callbacks run inline; a nested poll() from one is ignored so a tick
+		// can never re-enter itself.
+		if (_polling) {
+			return;
+		}
+		_polling = true;
+		try {
+			_pollUnlocked();
+		} catch (e:Dynamic) {
+			_polling = false;
+			throw e;
+		}
+		_polling = false;
+	}
+
+	/**
+	 * The poll tick body, run with the re-entrancy guard held.
+	 */
+	function _pollUnlocked():Void {
 		if (_socket == null) {
 			return;
 		}
@@ -497,7 +523,10 @@ class Socket {
 
 			_connected = true;
 			if (onConnect != null) {
-				onConnect();
+				// Contain callback throws so the tick proceeds to read/flush.
+				try {
+					onConnect();
+				} catch (e:Dynamic) {}
 			}
 		}
 
@@ -539,14 +568,19 @@ class Socket {
 
 				if (chunk != null && onData != null) {
 					// Pass the freshly received bytes; they also stay in the buffer.
-					onData(chunk.getBytes());
+					// Contain callback throws; the bytes are already buffered.
+					try {
+						onData(chunk.getBytes());
+					} catch (e:Dynamic) {}
 				}
 			} catch (e:Eof) {
 				close();
 				// A clean peer close is a normal shutdown: only onClose
 				// fires, the error callbacks are reserved for faults.
 				if (onClose != null) {
-					onClose();
+					try {
+						onClose();
+					} catch (e:Dynamic) {}
 				}
 				return;
 			} catch (e:Error) {
@@ -577,13 +611,19 @@ class Socket {
 
 	/**
 	 * Send a failure to both onError and the optional onErrorKind callbacks.
+	 * Callback throws are contained so one faulty listener cannot hide the
+	 * other or abort the caller; neither is re-entered from the catch.
 	 */
 	function _emitError(kind:SocketErrorKind, message:String):Void {
 		if (onError != null) {
-			onError(message);
+			try {
+				onError(message);
+			} catch (e:Dynamic) {}
 		}
 		if (onErrorKind != null) {
-			onErrorKind(kind, message);
+			try {
+				onErrorKind(kind, message);
+			} catch (e:Dynamic) {}
 		}
 	}
 

@@ -10,6 +10,9 @@ import sys.ssl.Key;
  * Client TLS socket for Haxe sys targets (sys.ssl). OpenFL/AIR-inspired SecureSocket
  * surface using callbacks and haxe.io.Bytes — not a full OpenFL port.
  * Server-authenticated TLS by default; mutual TLS via setClientCertificate() / setCA().
+ *
+ * The Socket callback rules apply here too: nested `poll()` is ignored and callback
+ * throws are contained, including during the TLS handshake path.
  */
 class SecureSocket extends Socket {
 	/**
@@ -193,14 +196,14 @@ class SecureSocket extends Socket {
 		_emitError(Timeout, "Connection timeout");
 	}
 
-	override function _poll():Void {
+	override function _pollUnlocked():Void {
 		if (_socket == null) {
 			return;
 		}
 
 		// If already connected and handshake complete, just do normal polling
 		if (_connected && _handshakeComplete) {
-			super._poll();
+			super._pollUnlocked();
 			return;
 		}
 
@@ -300,8 +303,12 @@ class SecureSocket extends Socket {
 				_handshakeComplete = true;
 				_connected = true;
 
+				// Contain callback throws so they are never mistaken for a
+				// certificate validation failure by the surrounding catch.
 				if (onConnect != null) {
-					onConnect();
+					try {
+						onConnect();
+					} catch (e:Dynamic) {}
 				}
 			} catch (e:Dynamic) {
 				_certificateStatus = INVALID;
