@@ -1,0 +1,13 @@
+{
+  "name": "hxsockets-peer-node",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Loopback TCP peer harness for hxSockets interop tests (Node stdlib only).",
+  "main": "peer.js",
+  "scripts": {
+    "peer": "node peer.js --mode echo"
+  },
+  "engines": {
+    "node": ">=26"
+  }
+}
