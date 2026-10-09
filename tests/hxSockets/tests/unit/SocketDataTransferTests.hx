@@ -5,11 +5,17 @@ import utest.Test;
 import utest.Assert;
 import utest.Async;
 import hxSockets.Socket;
+import hxSockets.tests.TestHelpers;
 import haxe.io.Bytes;
 
 /**
  * Tests for Socket data transfer operations
+ *
+ * These cases exchange HTTP with example.com, so they SKIP when no internet is
+ * available (or with `-D offline`). The class-level timeout exceeds the library
+ * default `Socket.timeout` so utest never aborts before the socket times out.
  */
+@:timeout(TestHelpers.SOCKET_TEST_TIMEOUT)
 class SocketDataTransferTests extends Test {
 	var socket:Socket;
 
@@ -26,8 +32,9 @@ class SocketDataTransferTests extends Test {
 
 	// HTTP Request/Response Tests
 
-	@:timeout(15000)
 	function testSocket_SendHTTP_ReceiveData(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.timeout = 10000;
 
 		socket.onConnect = function() {
@@ -59,8 +66,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_WriteBytes_Basic(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			var data = Bytes.ofString("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
 			socket.writeBytes(data);
@@ -81,8 +89,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_WriteBytes_WithOffset(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			var data = Bytes.ofString("XXXGET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
 			// Skip the first 3 bytes ("XXX")
@@ -106,8 +115,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_WriteBytes_WithLength(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			var fullData = Bytes.ofString("GET / HTTP/1.1\r\nHost: example.com\r\n\r\nEXTRA");
 			var correctLength = fullData.length - 5; // Exclude "EXTRA"
@@ -129,8 +139,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_ReadString_Partial(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			socket.writeString("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
 			socket.flush();
@@ -165,8 +176,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_ReadAllBytes(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			socket.writeString("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
 			socket.flush();
@@ -196,8 +208,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_ReadBytes_IntoBuffer(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			socket.writeString("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
 			socket.flush();
@@ -229,8 +242,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_MultipleWrites_BeforeFlush(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			// Write in multiple parts
 			socket.writeString("GET / HTTP/1.1\r\n");
@@ -258,8 +272,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_BytesAvailable_Updates(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			socket.writeString("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
 			socket.flush();
@@ -295,8 +310,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_EmptyRead(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			// Don't send anything, just check empty buffer
 			Assert.raises(function() {
@@ -319,8 +335,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_BinaryData(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			// Create binary data
 			var data = Bytes.alloc(256);
@@ -351,8 +368,9 @@ class SocketDataTransferTests extends Test {
 		socket.connect("example.com", 80);
 	}
 
-	@:timeout(15000)
 	function testSocket_UTF8_Encoding(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.onConnect = function() {
 			var utf8String = "Hello 世界 🌍";
 			socket.writeString(utf8String);

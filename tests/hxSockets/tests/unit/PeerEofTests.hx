@@ -6,14 +6,18 @@ import utest.Assert;
 import utest.Async;
 import hxSockets.Socket;
 import hxSockets.tests.LocalServer;
+import hxSockets.tests.TestHelpers;
 
 /**
  * Tests the peer-EOF callback contract: a clean peer close tears the socket
  * down and fires onClose only. onError and onErrorKind are reserved for
  * faults and must not fire on this path.
+ *
+ * Loopback-only (offline path); the class-level timeout exceeds the library
+ * default `Socket.timeout` so utest never aborts before the socket could.
  */
+@:timeout(TestHelpers.SOCKET_TEST_TIMEOUT)
 class PeerEofTests extends Test {
-	@:timeout(10000)
 	function testCleanPeerCloseFiresOnCloseOnly(async:Async) {
 		// The server accepts, sends nothing and closes: a clean peer EOF.
 		var server = new LocalServer([], 0);
@@ -61,7 +65,6 @@ class PeerEofTests extends Test {
 		async.done();
 	}
 
-	@:timeout(10000)
 	function testDataThenCleanCloseFiresOnCloseOnly(async:Async) {
 		// The server streams a chunk then closes; the client drains the data
 		// first so the EOF check is not racing buffered bytes.

@@ -1,22 +1,63 @@
 package hxSockets.tests;
 
 import haxe.io.Bytes;
+import utest.Assert;
+import utest.Async;
 
 /**
  * Helper utilities for socket tests
  */
 class TestHelpers {
 	/**
-	 * Check if we have internet connectivity
+	 * utest `@:timeout` budget for internet-facing tests: covers the library
+	 * default `Socket.timeout` (20 s) plus slack for DNS, TLS handshake and
+	 * poll latency, so utest never aborts before the socket times out itself.
+	 */
+	public static inline var SOCKET_TEST_TIMEOUT:Int = 25000;
+
+	static var _internet:Null<Bool>;
+
+	/**
+	 * Check if we have internet connectivity (cached; one DNS attempt per run)
 	 */
 	public static function hasInternetConnection():Bool {
-		// Simple heuristic - attempt to resolve a known host
-		try {
-			var host = new sys.net.Host("example.com");
-			return true;
-		} catch (e:Dynamic) {
+		if (_internet == null) {
+			// Simple heuristic - attempt to resolve a known host
+			try {
+				new sys.net.Host("example.com");
+				_internet = true;
+			} catch (e:Dynamic) {
+				_internet = false;
+			}
+		}
+		return _internet;
+	}
+
+	/**
+	 * True when internet-dependent tests should skip: forced with `-D offline`
+	 * at compile time, or when connectivity cannot be detected at run time.
+	 */
+	public static function internetUnavailable():Bool {
+		#if offline
+		return true;
+		#else
+		return !hasInternetConnection();
+		#end
+	}
+
+	/**
+	 * Skip an internet-dependent test when the network is unavailable: traces
+	 * the reason, passes cleanly (warnings would turn an offline CI run red),
+	 * resolves `async`, and returns `true` so the caller can `return`.
+	 */
+	public static function skipInternetTest(async:Async):Bool {
+		if (!internetUnavailable()) {
 			return false;
 		}
+		trace("SKIPPED: no internet - skipping internet-dependent test");
+		Assert.pass();
+		async.done();
+		return true;
 	}
 
 	/**

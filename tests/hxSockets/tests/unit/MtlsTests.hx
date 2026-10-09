@@ -7,6 +7,7 @@ import hxSockets.SecureSocket;
 import hxSockets.SocketErrorKind;
 import hxSockets.tests.CertGen;
 import hxSockets.tests.MtlsServer;
+import hxSockets.tests.TestHelpers;
 import haxe.io.Bytes;
 
 /**
@@ -17,7 +18,11 @@ import haxe.io.Bytes;
  * round-trips; the negative case presents no client cert and checks the
  * handshake is rejected. Certificates are generated with openssl into a temp
  * directory and deleted afterwards; the tests SKIP if openssl is unavailable.
+ *
+ * The class-level timeout exceeds the socket `timeout` (15 s) plus slack for the
+ * manual-poll pump budgets, so utest never aborts before the socket times out.
  */
+@:timeout(TestHelpers.SOCKET_TEST_TIMEOUT)
 class MtlsTests extends Test {
 	var certs:CertGen;
 
@@ -45,7 +50,6 @@ class MtlsTests extends Test {
 		return false;
 	}
 
-	@:timeout(20000)
 	function testClientCertHandshakeSucceeds(async:Async) {
 		if (certs == null) {
 			Assert.warn("openssl not available - skipping mTLS positive test");
@@ -103,7 +107,6 @@ class MtlsTests extends Test {
 		async.done();
 	}
 
-	@:timeout(20000)
 	function testNoClientCertIsRejected(async:Async) {
 		if (certs == null) {
 			Assert.warn("openssl not available - skipping mTLS negative test");

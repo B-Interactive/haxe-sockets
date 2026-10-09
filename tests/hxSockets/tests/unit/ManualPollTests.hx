@@ -5,6 +5,7 @@ import utest.Assert;
 import utest.Async;
 import hxSockets.Socket;
 import hxSockets.tests.LocalServer;
+import hxSockets.tests.TestHelpers;
 import haxe.io.Bytes;
 import haxe.Exception;
 
@@ -12,7 +13,11 @@ import haxe.Exception;
  * Tests manual-poll mode: with the internal Timer disabled the socket makes no
  * progress unless poll() is called, and connects + receives when poll() is
  * pumped.
+ *
+ * Loopback-only (offline path); the class-level timeout exceeds the library
+ * default `Socket.timeout` so utest never aborts before the socket could.
  */
+@:timeout(TestHelpers.SOCKET_TEST_TIMEOUT)
 class ManualPollTests extends Test {
 	function bytesOf(values:Array<Int>):Bytes {
 		var b = Bytes.alloc(values.length);
@@ -22,7 +27,6 @@ class ManualPollTests extends Test {
 		return b;
 	}
 
-	@:timeout(8000)
 	function testNoProgressWithoutPoll(async:Async) {
 		var server = new LocalServer([bytesOf([1, 2, 3, 4])], 0);
 		server.start();

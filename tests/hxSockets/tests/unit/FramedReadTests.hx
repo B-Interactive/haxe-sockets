@@ -5,13 +5,18 @@ import utest.Assert;
 import utest.Async;
 import hxSockets.Socket;
 import hxSockets.tests.LocalServer;
+import hxSockets.tests.TestHelpers;
 import haxe.io.Bytes;
 
 /**
  * Tests for the partial-read helpers readExactly(N), peekBytes(N) and
  * hasAvailable(N). Data arrives in small chunks from a loopback server and the
  * socket is driven in manual-poll mode to check there is no over-read.
+ *
+ * Loopback-only (offline path); the class-level timeout exceeds the library
+ * default `Socket.timeout` so utest never aborts before the socket could.
  */
+@:timeout(TestHelpers.SOCKET_TEST_TIMEOUT)
 class FramedReadTests extends Test {
 	function bytesOf(values:Array<Int>):Bytes {
 		var b = Bytes.alloc(values.length);
@@ -34,7 +39,6 @@ class FramedReadTests extends Test {
 		return false;
 	}
 
-	@:timeout(8000)
 	function testReadExactlyAcrossChunks(async:Async) {
 		// A 10-byte frame split across three chunks.
 		var server = new LocalServer([bytesOf([0, 1, 2]), bytesOf([3, 4, 5, 6]), bytesOf([7, 8, 9])], 30);
@@ -83,7 +87,6 @@ class FramedReadTests extends Test {
 		async.done();
 	}
 
-	@:timeout(8000)
 	function testPeekDoesNotConsume(async:Async) {
 		var server = new LocalServer([bytesOf([0xAA, 0xBB, 0xCC, 0xDD])], 0);
 		server.start();
@@ -132,7 +135,6 @@ class FramedReadTests extends Test {
 		async.done();
 	}
 
-	@:timeout(8000)
 	function testTwoBackToBackFramesNoOverRead(async:Async) {
 		// Two 4-byte frames in one chunk; reading the first must not consume
 		// the second.

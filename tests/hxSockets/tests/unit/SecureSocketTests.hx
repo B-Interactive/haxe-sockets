@@ -7,6 +7,7 @@ import utest.Async;
 import hxSockets.SecureSocket;
 import hxSockets.SocketErrorKind;
 import hxSockets.X509Certificate;
+import hxSockets.tests.TestHelpers;
 #if (cpp || neko || hl)
 import hxSockets.tests.CertGen;
 import hxSockets.tests.MtlsServer;
@@ -16,7 +17,12 @@ import haxe.io.Bytes;
 
 /**
  * Tests for SecureSocket (TLS/SSL) functionality
+ *
+ * The class-level timeout exceeds the library default `Socket.timeout` so utest
+ * never aborts a test before the socket's own timeout can fire. Internet-facing
+ * cases SKIP when no connectivity is available (or with `-D offline`).
  */
+@:timeout(TestHelpers.SOCKET_TEST_TIMEOUT)
 class SecureSocketTests extends Test {
 	var socket:SecureSocket;
 
@@ -60,8 +66,9 @@ class SecureSocketTests extends Test {
 
 	// HTTPS Connection Tests
 
-	@:timeout(2000)
 	function testSecureSocket_Connect_HTTPS(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.timeout = 15000;
 		var connectionComplete = false;
 
@@ -93,8 +100,9 @@ class SecureSocketTests extends Test {
 		socket.connect("example.com", 443);
 	}
 
-	@:timeout(2000)
 	function testSecureSocket_Certificate_Properties(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.timeout = 15000;
 		var testComplete = false;
 
@@ -137,8 +145,9 @@ class SecureSocketTests extends Test {
 		socket.connect("example.com", 443);
 	}
 
-	@:timeout(2000)
 	function testSecureSocket_Certificate_SubjectCN(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		var testComplete = false;
 
 		socket.onConnect = function() {
@@ -171,8 +180,9 @@ class SecureSocketTests extends Test {
 		socket.connect("example.com", 443);
 	}
 
-	@:timeout(2000)
 	function testSecureSocket_Certificate_ValidityPeriod(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		var testComplete = false;
 
 		socket.onConnect = function() {
@@ -204,8 +214,9 @@ class SecureSocketTests extends Test {
 		socket.connect("example.com", 443);
 	}
 
-	@:timeout(2000)
 	function testSecureSocket_SendHTTPS_ReceiveData(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		socket.timeout = 15000;
 		var testComplete = false;
 		var requestSent = false;
@@ -252,8 +263,9 @@ class SecureSocketTests extends Test {
 		socket.connect("example.com", 443);
 	}
 
-	@:timeout(2000)
 	function testSecureSocket_Properties_AfterConnect(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		var testComplete = false;
 
 		socket.onConnect = function() {
@@ -284,7 +296,7 @@ class SecureSocketTests extends Test {
 		socket.connect("example.com", 443);
 	}
 
-	@:timeout(15000)
+	// Non-routable TEST-NET-1 target: exercises the library timeout offline.
 	function testSecureSocket_Timeout(async:Async) {
 		socket.timeout = 2000;
 		var testComplete = false;
@@ -317,7 +329,6 @@ class SecureSocketTests extends Test {
 	}
 
 	#if (cpp || neko || hl)
-	@:timeout(15000)
 	function testSecureSocket_HandshakeTimeout_WhileWritable(async:Async) {
 		// A peer that accepts the TCP connection but never answers the TLS
 		// ClientHello leaves the socket writable and the handshake blocked.
@@ -374,7 +385,6 @@ class SecureSocketTests extends Test {
 		async.done();
 	}
 
-	@:timeout(25000)
 	function testSecureSocket_WrongCa_KeepsFailureStatusAfterError(async:Async) {
 		// A server signed by a throwaway CA is not trusted by the platform roots,
 		// so the handshake must fail. The failure status has to stay inspectable
@@ -432,8 +442,9 @@ class SecureSocketTests extends Test {
 	}
 	#end
 
-	@:timeout(2000)
 	function testSecureSocket_Close_AfterConnect(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		var testComplete = false;
 
 		socket.onConnect = function() {
@@ -463,8 +474,11 @@ class SecureSocketTests extends Test {
 		socket.connect("example.com", 443);
 	}
 
-	@:timeout(3000)
+	// Two sequential connects plus the delay between them need extra slack.
+	@:timeout(TestHelpers.SOCKET_TEST_TIMEOUT * 2)
 	function testSecureSocket_Reconnect(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		var connectCount = 0;
 		var testComplete = false;
 
@@ -506,8 +520,9 @@ class SecureSocketTests extends Test {
 		socket.connect("example.com", 443);
 	}
 
-	@:timeout(2000)
 	function testSecureSocket_Certificate_ToString(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		var testComplete = false;
 
 		socket.onConnect = function() {
@@ -541,8 +556,9 @@ class SecureSocketTests extends Test {
 		socket.connect("example.com", 443);
 	}
 
-	@:timeout(2000)
 	function testSecureSocket_BinaryData_Encrypted(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		var testData = Bytes.alloc(100);
 		for (i in 0...100) {
 			testData.set(i, i % 256);
@@ -627,8 +643,9 @@ class SecureSocketTests extends Test {
 
 	// Additional robustness tests
 
-	@:timeout(2000)
 	function testSecureSocket_ConnectionLifecycle(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		var testComplete = false;
 		var connectCalled = false;
 		var errorCalled = false;
@@ -670,8 +687,9 @@ class SecureSocketTests extends Test {
 		}, 15000);
 	}
 
-	@:timeout(2000)
 	function testSecureSocket_LargeDataTransfer(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		var testComplete = false;
 		var requestSent = false;
 
@@ -726,8 +744,9 @@ class SecureSocketTests extends Test {
 		socket.connect("example.com", 443);
 	}
 
-	@:timeout(2000)
 	function testSecureSocket_ReadAfterClose(async:Async) {
+		if (TestHelpers.skipInternetTest(async))
+			return;
 		var testComplete = false;
 
 		socket.onConnect = function() {

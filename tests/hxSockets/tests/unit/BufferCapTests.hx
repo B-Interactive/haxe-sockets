@@ -6,6 +6,7 @@ import utest.Assert;
 import utest.Async;
 import hxSockets.Socket;
 import hxSockets.SecureSocket;
+import hxSockets.tests.TestHelpers;
 #if (cpp || neko || hl)
 import hxSockets.tests.LocalServer;
 import hxSockets.tests.SilentServer;
@@ -15,7 +16,12 @@ import haxe.io.Bytes;
 /**
  * Tests for the configurable receive maximum and the capped outbound buffer
  * on Socket (and inherited by SecureSocket).
+ *
+ * Loopback cases pump with an explicit time budget; the class-level timeout
+ * exceeds the library default `Socket.timeout` (20 s) so utest never aborts a
+ * test while a poll pump or socket timeout is still in progress.
  */
+@:timeout(TestHelpers.SOCKET_TEST_TIMEOUT)
 class BufferCapTests extends Test {
 	static final MIB = 1024 * 1024;
 
@@ -97,7 +103,6 @@ class BufferCapTests extends Test {
 	 * Writes past the send cap throw and queue nothing; a successful flush
 	 * reduces bytesPending so later writes fit again.
 	 */
-	@:timeout(8000)
 	function testSendCapThrowsPastCap(async:Async) {
 		var server = new SilentServer();
 		server.start();
@@ -145,7 +150,6 @@ class BufferCapTests extends Test {
 	/**
 	 * writeString shares the same cap and throws past it.
 	 */
-	@:timeout(8000)
 	function testWriteStringRespectsSendCap(async:Async) {
 		var server = new SilentServer();
 		server.start();
@@ -179,7 +183,6 @@ class BufferCapTests extends Test {
 	 * A lowered receive max holds: reads never exceed it, and data keeps
 	 * arriving as the application drains the buffer.
 	 */
-	@:timeout(10000)
 	function testReceiveMaxCapsBufferedBytes(async:Async) {
 		var server = new LocalServer([bytesOfLength(64), bytesOfLength(64)], 10);
 		server.start();

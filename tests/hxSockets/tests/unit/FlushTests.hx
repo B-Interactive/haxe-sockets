@@ -5,6 +5,7 @@ import utest.Assert;
 import utest.Async;
 import hxSockets.Socket;
 import hxSockets.tests.LocalServer;
+import hxSockets.tests.TestHelpers;
 import haxe.io.Bytes;
 
 /**
@@ -17,7 +18,11 @@ import haxe.io.Bytes;
  * reproduced a null reference that only surfaced on the SECOND empty flush:
  * the first flush consumed the empty buffer, and the next flush dereferenced
  * the now-null backing storage.
+ *
+ * Loopback-only (offline path); the class-level timeout exceeds the library
+ * default `Socket.timeout` so utest never aborts before the socket could.
  */
+@:timeout(TestHelpers.SOCKET_TEST_TIMEOUT)
 class FlushTests extends Test {
 	function bytesOf(values:Array<Int>):Bytes {
 		var b = Bytes.alloc(values.length);
@@ -41,7 +46,6 @@ class FlushTests extends Test {
 	 * throw. This is the exact production pattern: a poll loop flushes every
 	 * tick while idle.
 	 */
-	@:timeout(8000)
 	function testRepeatedEmptyFlushDoesNotThrow(async:Async) {
 		var server = new LocalServer([], 0);
 		server.start();
@@ -78,7 +82,6 @@ class FlushTests extends Test {
 	 * flush must all succeed. This proves the output buffer stays usable after
 	 * being consumed and after empty flushes.
 	 */
-	@:timeout(8000)
 	function testWriteThenEmptyFlushesThenWriteAgain(async:Async) {
 		var server = new LocalServer([], 0);
 		server.start();
