@@ -1,0 +1,18 @@
+# Second sys target smoke: run the HashLink test suite with `-D offline`, so
+# no public internet is required. Equivalent to: haxe -D offline tests_hashlink.hxml
+#
+#   haxe tests_hashlink_offline.hxml
+#
+# Requires: haxe, the utest haxelib, and the `hl` runtime on PATH.
+-debug
+-D offline
+-lib utest
+-cp src
+-cp tests
+-main hxSockets.tests.HaxeSocketTests
+
+--each
+
+--next
+-hl bin/tests/hl/test.hl
+-cmd echo "Testing HashLink (offline)..." && hl bin/tests/hl/test.hl

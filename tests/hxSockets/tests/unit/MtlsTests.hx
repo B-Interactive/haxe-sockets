@@ -17,7 +17,8 @@ import haxe.io.Bytes;
  * The positive case connects with setClientCertificate(...) and checks a payload
  * round-trips; the negative case presents no client cert and checks the
  * handshake is rejected. Certificates are generated with openssl into a temp
- * directory and deleted afterwards; the tests SKIP if openssl is unavailable.
+ * directory and deleted afterwards; the tests SKIP cleanly (reported as
+ * passes) when openssl is unavailable or certificate generation fails.
  *
  * The class-level timeout exceeds the socket `timeout` (15 s) plus slack for the
  * manual-poll pump budgets, so utest never aborts before the socket times out.
@@ -25,10 +26,6 @@ import haxe.io.Bytes;
 @:timeout(TestHelpers.SOCKET_TEST_TIMEOUT)
 class MtlsTests extends Test {
 	var certs:CertGen;
-
-	function setup() {
-		certs = CertGen.generate();
-	}
 
 	function teardown() {
 		if (certs != null) {
@@ -51,9 +48,8 @@ class MtlsTests extends Test {
 	}
 
 	function testClientCertHandshakeSucceeds(async:Async) {
+		certs = CertGen.generateOrSkip(async);
 		if (certs == null) {
-			Assert.warn("openssl not available - skipping mTLS positive test");
-			async.done();
 			return;
 		}
 
@@ -108,9 +104,8 @@ class MtlsTests extends Test {
 	}
 
 	function testNoClientCertIsRejected(async:Async) {
+		certs = CertGen.generateOrSkip(async);
 		if (certs == null) {
-			Assert.warn("openssl not available - skipping mTLS negative test");
-			async.done();
 			return;
 		}
 

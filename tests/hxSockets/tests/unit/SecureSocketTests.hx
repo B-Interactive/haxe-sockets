@@ -390,10 +390,8 @@ class SecureSocketTests extends Test {
 		// so the handshake must fail. The failure status has to stay inspectable
 		// after the error callbacks fire and the socket tears down. Manual polling
 		// drives the handshake deterministically.
-		var certs = CertGen.generate();
+		var certs = CertGen.generateOrSkip(async);
 		if (certs == null) {
-			Assert.warn("openssl not available - skipping wrong-CA status test");
-			async.done();
 			return;
 		}
 

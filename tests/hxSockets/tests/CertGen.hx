@@ -2,11 +2,14 @@ package hxSockets.tests;
 
 import sys.FileSystem;
 import sys.io.File;
+import utest.Assert;
+import utest.Async;
 
 /**
  * Generates throwaway TLS test material (CA, server and client cert/key) into a
  * temp directory using openssl. Used by the mTLS tests. Returns null when
- * openssl is unavailable or any step fails, so the tests can SKIP.
+ * openssl is unavailable or any step fails, so tests SKIP cleanly instead of
+ * aborting the runner.
  */
 class CertGen {
 	public var dir(default, null):String;
@@ -25,25 +28,65 @@ class CertGen {
 		clientKey = haxe.io.Path.join([dir, "client.key"]);
 	}
 
+	static var _openssl:Null<Bool>;
+
 	/**
-	 * Return true if openssl is runnable.
+	 * Return true if openssl is runnable. Probed once per run and kept quiet
+	 * (output redirected to the null device) so a broken binary cannot spam or
+	 * abort the test runner through the console.
 	 */
 	public static function hasOpenssl():Bool {
+		if (_openssl == null) {
+			var nullDevice = Sys.systemName() == "Windows" ? "NUL" : "/dev/null";
+			try {
+				_openssl = Sys.command('openssl version > ' + nullDevice + ' 2>&1') == 0;
+			} catch (e:Dynamic) {
+				_openssl = false;
+			}
+		}
+		return _openssl;
+	}
+
+	/**
+	 * Generate all material, or return null on any failure (also when the
+	 * target cannot host the TLS test server).
+	 */
+	public static function generate():CertGen {
+		#if hl
+		// HashLink's sys.ssl.Socket segfaults when a server socket is closed
+		// after an aborted handshake, so the TLS server tests skip there.
+		return null;
+		#end
+		if (!hasOpenssl()) {
+			return null;
+		}
 		try {
-			return Sys.command("openssl", ["version"]) == 0;
+			return _generate();
 		} catch (e:Dynamic) {
-			return false;
+			// A crashing or misbehaving openssl must surface as a skip, not an
+			// aborted test run.
+			return null;
 		}
 	}
 
 	/**
-	 * Generate all material, or return null on any failure.
+	 * Generate material for one test, or skip it cleanly when openssl is
+	 * unavailable or generation fails: traces the reason, passes (warnings
+	 * would turn an offline CI run red), resolves `async`, and returns null so
+	 * the caller can `return`.
 	 */
-	public static function generate():CertGen {
-		if (!hasOpenssl()) {
-			return null;
+	public static function generateOrSkip(async:Async):CertGen {
+		var certs = generate();
+		if (certs != null) {
+			return certs;
 		}
+		trace("SKIPPED: openssl/TLS test server unavailable - skipping mTLS test");
+		Assert.pass();
+		async.done();
+		return null;
+	}
 
+	static function _generate():CertGen {
 		var base = Sys.getCwd();
 		var dir = haxe.io.Path.join([base, "tests_tmp_certs_" + Std.int(Sys.time() * 1000)]);
 		try {

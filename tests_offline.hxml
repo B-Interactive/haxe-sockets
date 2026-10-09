@@ -1,0 +1,19 @@
+# Offline-first default CI path: build and run the primary C++ (hxcpp) test
+# suite with `-D offline`, which force-skips every internet-dependent case.
+# Loopback cases (framing, flush, EOF, buffer caps, manual poll, non-routable
+# timeout) still run; mTLS cases pass or SKIP cleanly when openssl is absent
+# or misbehaves. This is the documented no-network CI command.
+#
+#   haxe tests_offline.hxml
+#
+# Equivalent to: haxe -D offline tests_cpp.hxml
+# Requires: haxe, the utest and hxcpp haxelibs, and a working C++ toolchain.
+-debug
+-D offline
+-lib utest
+-lib hxcpp
+-cp src
+-cp tests
+-main hxSockets.tests.HaxeSocketTests
+-cpp tests/cpp
+-cmd echo "Running C++ tests (offline)..." && tests/cpp/HaxeSocketTests-debug
